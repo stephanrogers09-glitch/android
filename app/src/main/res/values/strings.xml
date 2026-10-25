@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Locked In</string>
+    <string name="accessibility_description">While a lock you started is running, Locked In notices which app is in front and returns to the black screen unless it is the phone dialer. It does not read the screen. It does nothing when no lock is running.</string>
+</resources>
