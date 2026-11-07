@@ -23,12 +23,8 @@ import java.util.Calendar
 
 class PlusActivity : Activity() {
     private lateinit var status: TextView
-    private lateinit var number: EditText
-    private lateinit var expiry: EditText
-    private lateinit var cvc: EditText
     private lateinit var code: EditText
     private lateinit var partner: EditText
-    private lateinit var payButton: Button
     private lateinit var dailyButton: Button
     private var days = 31
     private var hour = 22
@@ -60,20 +56,22 @@ class PlusActivity : Activity() {
         status = note("")
         column.addView(status)
 
-        column.addView(priceButton("\$2  ·  31 days", 31))
-        column.addView(priceButton("\$15  ·  1 year", 365))
+        column.addView(priceButton("$2  ·  31 days", 31))
+        column.addView(priceButton("$15  ·  1 year", 365))
 
-        number = field("Card number", InputType.TYPE_CLASS_NUMBER)
-        expiry = field("MM/YY", InputType.TYPE_CLASS_DATETIME)
-        cvc = field("CVC", InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD)
-        column.addView(number)
-        column.addView(expiry)
-        column.addView(cvc)
-        payButton = solidButton("Pay \$2") { pay() }
-        column.addView(payButton)
-        column.addView(note("Demo checkout. The card is not charged and is not saved."))
+        column.addView(note("""
+Pay via MTN MoMo or Airtel Money
 
-        column.addView(note("Already paid? Enter the code."))
+Send the amount to:
+MTN MoMo: 0770000000
+Airtel Money: 0750000000
+
+Reference: LockedIn
+
+Then WhatsApp or SMS the transaction ID and your number. I will reply with a code. Enter it below.
+""".trimIndent()))
+
+        column.addView(note("Enter the code you received:"))
         code = field("Code", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS)
         column.addView(code)
         column.addView(quietButton("Use code") { useCode() })
@@ -99,24 +97,6 @@ class PlusActivity : Activity() {
         column.addView(quietButton("Back") { finish() })
 
         setContentView(root)
-        refresh()
-    }
-
-    private fun pay() {
-        if (!cardOk()) {
-            status.text = "Use 4242 4242 4242 4242, a future date, and any 3-digit CVC."
-            return
-        }
-        number.setText("")
-        expiry.setText("")
-        cvc.setText("")
-        Pass.grant(this, days)
-        status.text = "Plus is on until ${Pass.untilLabel(this)}."
-        Schedule.arm(this)
-        if (intent.getBooleanExtra("lock", false)) {
-            beginLock()
-            return
-        }
         refresh()
     }
 
@@ -231,42 +211,10 @@ class PlusActivity : Activity() {
         }
     }
 
-    private fun cardOk(): Boolean {
-        val digits = number.text.toString().filter { it.isDigit() }
-        if (digits.length !in 15..16 || !luhn(digits)) return false
-        if (cvc.text.toString().filter { it.isDigit() }.length !in 3..4) return false
-        val parts = expiry.text.toString().trim().split("/")
-        if (parts.size != 2) return false
-        val month = parts[0].toIntOrNull() ?: return false
-        val yearRaw = parts[1].toIntOrNull() ?: return false
-        if (month !in 1..12) return false
-        val year = if (yearRaw < 100) 2000 + yearRaw else yearRaw
-        val now = Calendar.getInstance()
-        val thisYear = now.get(Calendar.YEAR)
-        val thisMonth = now.get(Calendar.MONTH) + 1
-        return year > thisYear || (year == thisYear && month >= thisMonth)
-    }
-
-    private fun luhn(number: String): Boolean {
-        var sum = 0
-        var alternate = false
-        for (index in number.length - 1 downTo 0) {
-            var digit = number[index].digitToInt()
-            if (alternate) {
-                digit *= 2
-                if (digit > 9) digit -= 9
-            }
-            sum += digit
-            alternate = !alternate
-        }
-        return sum % 10 == 0
-    }
-
     private fun refresh() {
         if (Pass.owns(this) && status.text.isNullOrBlank()) {
             status.text = "Plus is on until ${Pass.untilLabel(this)}."
         }
-        payButton.text = if (days == 365) "Pay \$15" else "Pay \$2"
         val column = status.parent as LinearLayout
         column.findViewWithTag<Button>("toggle")?.text = if (on) "Daily lock is on" else "Turn daily lock on"
         if (::dailyButton.isInitialized) dailyButton.text = dayLabel()
