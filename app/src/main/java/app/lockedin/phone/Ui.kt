@@ -17,6 +17,7 @@ const val COLOR_MUTED = "#8E897F"
 const val COLOR_LINE = "#2C2C2C"
 const val COLOR_PAPER = "#F4F1EA"
 const val COLOR_INK = "#14120E"
+const val COLOR_CARD = "#121212"
 
 fun Context.dp(value: Int): Int {
     return TypedValue.applyDimension(
