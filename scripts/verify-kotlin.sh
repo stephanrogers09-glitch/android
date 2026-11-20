@@ -44,11 +44,15 @@ compile() {
 echo "== compiling shared core and allowlist rules"
 compile $(find "$ROOT/shared/src/main" -name '*.kt') \
   "$ROOT/shared/src/test/kotlin/app/lockedin/core/CoreChecks.kt" \
+  "$ROOT/shared/src/test/kotlin/app/lockedin/core/AiWireChecks.kt" \
   "$ROOT/app/src/main/java/app/lockedin/phone/AllowRules.kt" \
   "$ROOT/app/src/test/kotlin/app/lockedin/phone/AllowRulesChecks.kt"
 
 echo "== running shared core checks"
 java -cp "$OUT:$STDLIB" app.lockedin.core.CoreChecksKt
+
+echo "== running AI wire checks"
+java -cp "$OUT:$STDLIB" app.lockedin.core.AiWireChecksKt
 
 echo "== running allowlist checks"
 java -cp "$OUT:$STDLIB" app.lockedin.phone.AllowRulesChecksKt
