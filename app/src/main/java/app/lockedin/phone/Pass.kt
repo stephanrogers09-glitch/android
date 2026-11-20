@@ -13,19 +13,29 @@ import java.util.Locale
  * expiry the server confirmed and checks it locally, so the Focus Engine keeps working offline
  * until that expiry.
  *
- * The public redemption codes are removed. Passes already stored from earlier codes are honoured
- * until they expire, so no customer who paid loses access. They cannot be renewed with codes.
+ * The public redemption codes were compromised and are invalidated. Passes stored by earlier app
+ * versions (key `plusUntil`) are no longer read and are deleted on first use. This is a deliberate
+ * behaviour change: Plus features are off on every device until a server grant exists. Plus is
+ * stored under a new key that only `applyServerExpiry` writes.
  */
 object Pass {
     private const val FILE = "locked-in-setup"
-    private const val UNTIL = "plusUntil"
+    private const val LEGACY_UNTIL = "plusUntil"   // written by the removed redemption codes
+    private const val UNTIL = "serverPlusUntil"    // written only from a server-confirmed expiry
 
     fun owns(context: Context, now: Long = System.currentTimeMillis()): Boolean {
+        removeLegacy(context)
         return until(context) > now
     }
 
     fun until(context: Context): Long {
         return prefs(context).getLong(UNTIL, 0L)
+    }
+
+    /** Deletes passes issued by the compromised codes. Safe to call repeatedly. */
+    private fun removeLegacy(context: Context) {
+        val p = prefs(context)
+        if (p.contains(LEGACY_UNTIL)) p.edit().remove(LEGACY_UNTIL).apply()
     }
 
     fun untilLabel(context: Context): String {
