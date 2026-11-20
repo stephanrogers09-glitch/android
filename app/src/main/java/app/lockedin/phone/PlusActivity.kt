@@ -19,14 +19,11 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import java.util.Calendar
 
 class PlusActivity : Activity() {
     private lateinit var status: TextView
-    private lateinit var code: EditText
     private lateinit var partner: EditText
     private lateinit var dailyButton: Button
-    private var days = 31
     private var hour = 22
     private var minute = 0
     private var on = false
@@ -56,25 +53,7 @@ class PlusActivity : Activity() {
         status = note("")
         column.addView(status)
 
-        column.addView(priceButton("$2  ·  31 days", 31))
-        column.addView(priceButton("$15  ·  1 year", 365))
-
-        column.addView(note("""
-Pay via MTN MoMo or Airtel Money
-
-Send the amount to:
-MTN MoMo: 0770000000
-Airtel Money: 0750000000
-
-Reference: LockedIn
-
-Then WhatsApp or SMS the transaction ID and your number. I will reply with a code. Enter it below.
-""".trimIndent()))
-
-        column.addView(note("Enter the code you received:"))
-        code = field("Code", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS)
-        column.addView(code)
-        column.addView(quietButton("Use code") { useCode() })
+        column.addView(note("Plus purchases are being set up. Anything you already have stays on until its date."))
 
         column.addView(TextView(this).apply {
             text = "Your controls"
@@ -98,30 +77,6 @@ Then WhatsApp or SMS the transaction ID and your number. I will reply with a cod
 
         setContentView(root)
         refresh()
-    }
-
-    private fun useCode() {
-        if (!Pass.redeem(this, code.text.toString())) {
-            status.text = "That code is not valid."
-            return
-        }
-        code.setText("")
-        status.text = "Plus is on until ${Pass.untilLabel(this)}."
-        Schedule.arm(this)
-        if (intent.getBooleanExtra("lock", false)) {
-            beginLock()
-            return
-        }
-        refresh()
-    }
-
-    private fun beginLock() {
-        val chosen = Preset.fromId(intent.getStringExtra("preset"))
-        val text = intent.getStringExtra("line").orEmpty().ifBlank { "Do it." }
-        SessionStore.markSetup(this)
-        SessionStore.start(this, chosen, text)
-        startActivity(Intent(this, LockActivity::class.java))
-        finish()
     }
 
     private fun pickTime() {
@@ -224,13 +179,6 @@ Then WhatsApp or SMS the transaction ID and your number. I will reply with a cod
         val suffix = if (hour < 12) "am" else "pm"
         val shown = if (hour % 12 == 0) 12 else hour % 12
         return "Every day at $shown:${minute.toString().padStart(2, '0')} $suffix"
-    }
-
-    private fun priceButton(label: String, length: Int): Button {
-        return quietButton(label) {
-            days = length
-            refresh()
-        }
     }
 
     private fun note(text: String): TextView {

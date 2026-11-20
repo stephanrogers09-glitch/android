@@ -2,20 +2,21 @@ package app.lockedin.phone
 
 import android.app.KeyguardManager
 import android.content.Context
+import android.telecom.TelecomManager
 
 object Allow {
     fun isAllowed(context: Context, packageName: String): Boolean {
-        if (packageName == "app.lockedin.phone") return true
-        if (packageName == "com.android.systemui") return true
-        if (packageName == "com.android.phone") return true
-        if (packageName == "com.android.server.telecom") return true
-        val name = packageName.lowercase()
-        if (name.contains("photo") || name.contains("gallery") || name.contains("album")) return false
-        if (SessionStore.isPermitted(context, packageName)) return true
-        return name.contains("dialer") ||
-            name.contains("incall") ||
-            name.contains("telecom") ||
-            name.contains("emergency")
+        return AllowRules.isAllowed(
+            packageName = packageName,
+            defaultDialer = defaultDialer(context),
+            permittedByUser = SessionStore.isPermitted(context, packageName),
+        )
+    }
+
+    /** The package the system has set as the default phone app, or null if unknown. */
+    private fun defaultDialer(context: Context): String? {
+        val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
+        return telecom?.defaultDialerPackage
     }
 
     fun isWhatsAppCall(packageName: String?, className: String?): Boolean {
