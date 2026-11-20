@@ -177,3 +177,47 @@ test("a failing refund does not hide the upstream error", async () => {
   const res = await run(post({ task: "EXPLAIN", context: "x" }), net);
   assert.equal(res.status, 502);
 });
+
+import { readEnv } from "../build/handler.js";
+
+test("readEnv reports every missing setting by name", () => {
+  const result = readEnv(() => undefined);
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.missing, ["SUPABASE_URL", "LOCKEDIN_PUBLISHABLE_KEY", "LOCKEDIN_SECRET_KEY", "GEMINI_API_KEY"]);
+});
+
+test("readEnv prefers LOCKEDIN_* names and falls back to injected legacy names", () => {
+  const values = {
+    SUPABASE_URL: "https://p.supabase.co",
+    SUPABASE_ANON_KEY: "legacy-anon",
+    LOCKEDIN_PUBLISHABLE_KEY: "sb_publishable_x",
+    SUPABASE_SERVICE_ROLE_KEY: "legacy-service",
+    LOCKEDIN_SECRET_KEY: "sb_secret_y",
+    GEMINI_API_KEY: "gem",
+  };
+  const result = readEnv((n) => values[n]);
+  assert.equal(result.ok, true);
+  assert.equal(result.env.supabaseAnonKey, "sb_publishable_x");
+  assert.equal(result.env.supabaseServiceRoleKey, "sb_secret_y");
+  assert.equal(result.env.geminiModel, "gemini-2.5-flash");
+});
+
+test("readEnv accepts legacy injected keys when the LOCKEDIN_* ones are absent", () => {
+  const values = {
+    SUPABASE_URL: "https://p.supabase.co",
+    SUPABASE_ANON_KEY: "legacy-anon",
+    SUPABASE_SERVICE_ROLE_KEY: "legacy-service",
+    GEMINI_API_KEY: "gem",
+    GEMINI_MODEL: "gemini-test",
+  };
+  const result = readEnv((n) => values[n]);
+  assert.equal(result.ok, true);
+  assert.equal(result.env.supabaseAnonKey, "legacy-anon");
+  assert.equal(result.env.geminiModel, "gemini-test");
+});
+
+test("blank values count as missing", () => {
+  const result = readEnv((n) => (n === "GEMINI_API_KEY" ? "   " : "x"));
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.missing, ["GEMINI_API_KEY"]);
+});

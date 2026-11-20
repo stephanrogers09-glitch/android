@@ -1,27 +1,23 @@
 // Deno entry point for the ai-assist Edge Function. Not type-checked under Node; the logic
 // lives in handler.ts and is covered by backend/scripts/test-functions.sh.
-import { handleAiRequest } from "./handler.ts";
+import { handleAiRequest, readEnv } from "./handler.ts";
 
 declare const Deno: {
   env: { get(name: string): string | undefined };
   serve(handler: (req: Request) => Response | Promise<Response>): void;
 };
 
-function required(name: string): string {
-  const value = Deno.env.get(name);
-  if (!value) throw new Error(`missing environment variable ${name}`);
-  return value;
-}
-
-Deno.serve((req) =>
-  handleAiRequest(req, {
+Deno.serve((req) => {
+  const resolved = readEnv((name) => Deno.env.get(name));
+  if (!resolved.ok) {
+    // A setup problem is reported, not a crash. The names are not secret; the values never appear.
+    return new Response(
+      JSON.stringify({ error: "server_not_configured", missing: resolved.missing }),
+      { status: 503, headers: { "content-type": "application/json" } },
+    );
+  }
+  return handleAiRequest(req, {
     fetch: (input, init) => fetch(input, init),
-    env: {
-      supabaseUrl: required("SUPABASE_URL"),
-      supabaseAnonKey: required("SUPABASE_ANON_KEY"),
-      supabaseServiceRoleKey: required("SUPABASE_SERVICE_ROLE_KEY"),
-      geminiApiKey: required("GEMINI_API_KEY"),
-      geminiModel: Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash",
-    },
-  }),
-);
+    env: resolved.env,
+  });
+});

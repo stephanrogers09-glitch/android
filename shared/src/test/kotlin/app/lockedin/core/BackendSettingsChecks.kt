@@ -27,10 +27,16 @@ fun main() {
     check("missing key is reported", BackendSettings.problems(url, "").any { it.contains("LOCKEDIN_SUPABASE_ANON_KEY is not set") })
     check("service role key is refused",
         BackendSettings.problems(url, key("service_role")).any { it.contains("service role key") })
-    check("non-JWT key is refused", BackendSettings.problems(url, "not-a-key").any { it.contains("does not look like") })
+    check("non-JWT key is refused", BackendSettings.problems(url, "not-a-key").any { it.contains("is not a Supabase publishable or anon key") })
     check("role parsed from anon key", BackendSettings.roleOf(key("anon")) == "anon")
     check("role of garbage is null", BackendSettings.roleOf("a.b.c") == null)
     check("both missing gives both problems", BackendSettings.problems("", "").size == 2)
+    check("publishable key accepted", BackendSettings.problems(url, "sb_publishable_abc123XYZ").isEmpty())
+    check("publishable key with spaces accepted", BackendSettings.problems(url, "  sb_publishable_abc123  ").isEmpty())
+    check("bare publishable prefix refused", BackendSettings.problems(url, "sb_publishable_").any { it.contains("incomplete") })
+    check("secret key refused", BackendSettings.problems(url, "sb_secret_abc123").any { it.contains("secret key") })
+    check("authenticated role refused", BackendSettings.problems(url, key("authenticated")).any { it.contains("role 'authenticated'") })
+    check("legacy anon JWT still accepted", BackendSettings.problems(url, key("anon")).isEmpty())
 
     println("backend settings checks: $passed passed, $failed failed")
     if (failed > 0) throw IllegalStateException("$failed backend settings check(s) failed")

@@ -32,6 +32,45 @@ export interface AiEnv {
   geminiModel: string;
 }
 
+/**
+ * Reads the function's settings. The Supabase URL and the keys are provided by Supabase or set with
+ * `supabase secrets set`. Newer LOCKEDIN_* names take precedence over the legacy names that the
+ * runtime may inject. Returns the names that are missing, so the caller can report them.
+ */
+export function readEnv(
+  get: (name: string) => string | undefined,
+): { ok: true; env: AiEnv } | { ok: false; missing: string[] } {
+  const pick = (...names: string[]): string | undefined => {
+    for (const name of names) {
+      const value = get(name)?.trim();
+      if (value) return value;
+    }
+    return undefined;
+  };
+  const supabaseUrl = pick("SUPABASE_URL");
+  const publishable = pick("LOCKEDIN_PUBLISHABLE_KEY", "SUPABASE_ANON_KEY");
+  const secret = pick("LOCKEDIN_SECRET_KEY", "SUPABASE_SERVICE_ROLE_KEY");
+  const geminiApiKey = pick("GEMINI_API_KEY");
+  const missing: string[] = [];
+  if (!supabaseUrl) missing.push("SUPABASE_URL");
+  if (!publishable) missing.push("LOCKEDIN_PUBLISHABLE_KEY");
+  if (!secret) missing.push("LOCKEDIN_SECRET_KEY");
+  if (!geminiApiKey) missing.push("GEMINI_API_KEY");
+  if (missing.length > 0 || !supabaseUrl || !publishable || !secret || !geminiApiKey) {
+    return { ok: false, missing };
+  }
+  return {
+    ok: true,
+    env: {
+      supabaseUrl,
+      supabaseAnonKey: publishable,
+      supabaseServiceRoleKey: secret,
+      geminiApiKey,
+      geminiModel: pick("GEMINI_MODEL") ?? "gemini-2.5-flash",
+    },
+  };
+}
+
 export interface AiDeps {
   fetch: (input: string, init?: RequestInit) => Promise<Response>;
   env: AiEnv;

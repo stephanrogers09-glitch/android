@@ -161,3 +161,35 @@ jobs:
           name: instrumented-test-report
           path: app/build/reports/androidTests/
           if-no-files-found: ignore
+
+  release-guard:
+    name: Release signing must refuse to build without a keystore
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: The build file never references the debug signing key
+        run: |
+          if grep -q 'getByName("debug")' app/build.gradle.kts; then
+            echo "app/build.gradle.kts still references the debug signing config"; exit 1
+          fi
+      - name: Release build without settings must fail with the guard message
+        run: |
+          set +e
+          gradle :app:assembleRelease --no-daemon > release.log 2>&1
+          code=$?
+          set -e
+          cat release.log | tail -n 30
+          if [ "$code" -eq 0 ]; then
+            echo "release build succeeded without release signing settings"; exit 1
+          fi
+          grep -q "Release build needs a release keystore" release.log || { echo "guard message missing"; exit 1; }
+          grep -q "debug key is never used" release.log || { echo "guard message incomplete"; exit 1; }
+          echo "release guard works"
+

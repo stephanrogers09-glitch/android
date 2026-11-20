@@ -10,6 +10,10 @@ object BackendSettings {
     const val URL_SETTING = "LOCKEDIN_SUPABASE_URL"
     const val KEY_SETTING = "LOCKEDIN_SUPABASE_ANON_KEY"
 
+    /** Current Supabase keys. A publishable key is safe in a shipped app; a secret key never is. */
+    const val PUBLISHABLE_PREFIX = "sb_publishable_"
+    const val SECRET_PREFIX = "sb_secret_"
+
     fun problems(url: String, anonKey: String): List<String> {
         val out = mutableListOf<String>()
         val trimmedUrl = url.trim()
@@ -19,13 +23,18 @@ object BackendSettings {
             out += "$URL_SETTING must be an https:// address"
         }
         val key = anonKey.trim()
-        if (key.isEmpty()) {
-            out += "$KEY_SETTING is not set"
-        } else {
-            when (roleOf(key)) {
-                "service_role" -> out += "$KEY_SETTING is a service role key. Use the anon key; the service role key must never go in the app"
-                null -> out += "$KEY_SETTING does not look like a Supabase anon key"
-                else -> Unit
+        when {
+            key.isEmpty() -> out += "$KEY_SETTING is not set"
+            key.startsWith(SECRET_PREFIX) ->
+                out += "$KEY_SETTING is a secret key. Use the publishable key; a secret key must never go in the app"
+            key.startsWith(PUBLISHABLE_PREFIX) ->
+                if (key.length == PUBLISHABLE_PREFIX.length) out += "$KEY_SETTING is incomplete"
+            else -> when (val role = roleOf(key)) {
+                "anon" -> Unit
+                "service_role" ->
+                    out += "$KEY_SETTING is a service role key. Use the publishable key; a service role key must never go in the app"
+                null -> out += "$KEY_SETTING is not a Supabase publishable or anon key"
+                else -> out += "$KEY_SETTING has role '$role', not the anon role"
             }
         }
         return out

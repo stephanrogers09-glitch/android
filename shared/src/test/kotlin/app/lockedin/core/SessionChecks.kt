@@ -160,6 +160,31 @@ fun main() {
     check("refresh body is valid JSON with token",
         AuthWire.encodeRefresh("rt\"x") == "{\"refresh_token\":\"rt\\\"x\"}")
 
+    run {
+        // Concurrent callers on an expired session must share one refresh. A second refresh with the
+        // already-rotated token would be rejected and end the session.
+        val store = MemoryStore()
+        val calls = java.util.concurrent.atomic.AtomicInteger(0)
+        val refresher = object : SessionRefresher {
+            override fun refresh(refreshToken: String, nowMs: Long): AuthResult {
+                calls.incrementAndGet()
+                Thread.sleep(50)
+                return AuthResult.Signed(session("at-new", "rt-new", LONG_LIFE))
+            }
+            override fun revoke(accessToken: String) {}
+        }
+        val manager = SessionManager(store, refresher)
+        manager.begin(session("at-old", "rt-old", NOW - 1))
+        val results = java.util.Collections.synchronizedList(mutableListOf<TokenResult>())
+        val threads = (1..8).map { Thread { results.add(manager.accessToken(NOW)) } }
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
+        check("concurrent callers refresh once", calls.get() == 1)
+        check("every caller gets the new token",
+            results.size == 8 && results.all { it == TokenResult.Token("at-new") })
+        check("the stored refresh token is the rotated one", AuthWire.decodeRecord(store.record)?.refreshToken == "rt-new")
+    }
+
     println("session lifecycle checks: $passed passed, $failed failed")
     if (failed > 0) throw IllegalStateException("$failed session check(s) failed")
 }

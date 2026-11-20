@@ -2,6 +2,8 @@ package app.lockedin.phone
 
 import android.app.Activity
 import android.graphics.Color
+import android.os.Handler
+import android.os.Looper
 import android.os.Bundle
 import android.text.InputType
 import android.view.View
@@ -43,6 +45,10 @@ class AiSessionActivity : Activity() {
     }
     private lateinit var signInButton: Button
     private val tasks = AiTask.values()
+    private val main = Handler(Looper.getMainLooper())
+
+    /** Increments on every state check, so a slow older check can never overwrite a newer one. */
+    private var stateGeneration = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -133,6 +139,9 @@ class AiSessionActivity : Activity() {
         sessionBlock.addView(answer.also { it.fillWidth() })
 
         page.addView(sessionBlock)
+        // Both blocks start hidden: the session check runs in the background and decides which one shows.
+        signInBlock.visibility = View.GONE
+        sessionBlock.visibility = View.GONE
         setContentView(root)
         render()
     }
@@ -152,12 +161,24 @@ class AiSessionActivity : Activity() {
     }
 
     /**
-     * Shows sign-in or the study tools. Reads only local state, so it never waits on the network.
-     * A missing build setting is shown here instead of a sign-in that cannot work.
+     * Decides between sign-in and the study tools. The Keystore read happens on a background thread,
+     * so the screen never blocks. A missing build setting is shown without any read at all.
      */
     private fun render() {
         val setup = BackendConfig.problem()
-        val signedIn = setup == null && manager.hasSession()
+        val generation = ++stateGeneration
+        if (setup != null) {
+            applyState(generation, setup = setup, signedIn = false)
+            return
+        }
+        Thread {
+            val signedIn = manager.hasSession()
+            main.post { applyState(generation, setup = null, signedIn = signedIn) }
+        }.start()
+    }
+
+    private fun applyState(generation: Int, setup: String?, signedIn: Boolean) {
+        if (generation != stateGeneration) return
         signInBlock.visibility = if (signedIn) View.GONE else View.VISIBLE
         sessionBlock.visibility = if (signedIn) View.VISIBLE else View.GONE
         signInButton.isEnabled = setup == null
@@ -180,10 +201,13 @@ class AiSessionActivity : Activity() {
     }
 
     private fun onSignOut() {
-        // Local sign-out is immediate. The server revoke runs in the background and may fail offline.
-        val token = manager.signOut()
-        token?.let { auth.revoke(it) }
-        render()
+        // Clearing the Keystore record and the server revoke both run in the background.
+        // Local sign-out still happens at once from the student's point of view: the screen returns to sign-in.
+        Thread {
+            val token = manager.signOut()
+            token?.let { auth.revoke(it) }
+            main.post { render() }
+        }.start()
     }
 
     private fun onSend() {
