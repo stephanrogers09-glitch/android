@@ -36,7 +36,12 @@ class AiSessionActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var answer: TextView
 
-    private val client = AiClient(accessToken = { AuthStore.usableAccessToken() })
+    private val manager by lazy { AppSession.manager(this) }
+    private val auth = AuthClient()
+    private val client by lazy {
+        AiClient(token = { manager.accessToken(System.currentTimeMillis()) })
+    }
+    private lateinit var signInButton: Button
     private val tasks = AiTask.values()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,11 +66,12 @@ class AiSessionActivity : Activity() {
         password = field("Password", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
         signInBlock.addView(email.also { it.fillWidth() })
         signInBlock.addView(password.also { it.fillWidth() })
-        signInBlock.addView(Button(this).apply {
+        signInButton = Button(this).apply {
             text = "Sign in"
             setOnClickListener { onSignIn() }
             outline(this@AiSessionActivity)
-        }.also { it.fillWidth() })
+        }
+        signInBlock.addView(signInButton.also { it.fillWidth() })
         signInStatus = TextView(this).apply { quiet(this@AiSessionActivity, 14f) }
         signInBlock.addView(signInStatus.also { it.fillWidth() })
         page.addView(signInBlock)
@@ -75,7 +81,7 @@ class AiSessionActivity : Activity() {
         sessionBlock.addView(TextView(this).apply { quiet(this@AiSessionActivity, 14f); text = "Signed in." }.also { it.fillWidth() })
         sessionBlock.addView(Button(this).apply {
             text = "Sign out"
-            setOnClickListener { AuthClient.signOut(); render() }
+            setOnClickListener { onSignOut() }
             outline(this@AiSessionActivity)
         }.also { it.fillWidth() })
 
@@ -145,17 +151,25 @@ class AiSessionActivity : Activity() {
         setPadding(dp(12), dp(12), dp(12), dp(12))
     }
 
-    /** Shows sign-in or the study tools, depending on whether a usable session exists. */
+    /**
+     * Shows sign-in or the study tools. Reads only local state, so it never waits on the network.
+     * A missing build setting is shown here instead of a sign-in that cannot work.
+     */
     private fun render() {
-        val signedIn = AuthStore.usableAccessToken() != null
+        val setup = BackendConfig.problem()
+        val signedIn = setup == null && manager.hasSession()
         signInBlock.visibility = if (signedIn) View.GONE else View.VISIBLE
         sessionBlock.visibility = if (signedIn) View.VISIBLE else View.GONE
+        signInButton.isEnabled = setup == null
+        if (setup != null) signInStatus.text = setup
     }
 
     private fun onSignIn() {
         signInStatus.text = "Signing in…"
-        AuthClient.signIn(email.text.toString(), password.text.toString()) { message ->
+        signInButton.isEnabled = false
+        auth.signIn(manager, email.text.toString(), password.text.toString()) { message ->
             password.setText("")
+            signInButton.isEnabled = true
             if (message == null) {
                 signInStatus.text = ""
                 render()
@@ -163,6 +177,13 @@ class AiSessionActivity : Activity() {
                 signInStatus.text = message
             }
         }
+    }
+
+    private fun onSignOut() {
+        // Local sign-out is immediate. The server revoke runs in the background and may fail offline.
+        val token = manager.signOut()
+        token?.let { auth.revoke(it) }
+        render()
     }
 
     private fun onSend() {
@@ -191,8 +212,7 @@ class AiSessionActivity : Activity() {
             }
             is AiResult.Unavailable -> {
                 if (result.reason == Unavailability.NOT_SIGNED_IN) {
-                    // The session ended or was never set. Send the student back to sign-in.
-                    AuthStore.clear()
+                    // The session ended. The manager already cleared it, so return to sign-in.
                     render()
                     signInStatus.text = "Your session has ended. Sign in again."
                 }
@@ -206,8 +226,8 @@ class AiSessionActivity : Activity() {
 
     private fun unavailableText(reason: Unavailability): String = when (reason) {
         Unavailability.NOT_SIGNED_IN -> "Sign in to use the AI helper."
-        Unavailability.OFFLINE -> "No connection. Your study session still works offline."
-        Unavailability.NOT_CONFIGURED -> "The AI helper is not connected to a server yet."
+        Unavailability.OFFLINE -> "Could not reach the server. Your notes are still here; try again when you are online."
+        Unavailability.NOT_CONFIGURED -> BackendConfig.problem() ?: "The AI helper is not set up in this build."
         Unavailability.SERVICE_DOWN -> "The AI helper is switched off right now."
     }
 

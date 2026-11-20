@@ -4,41 +4,41 @@ import android.os.Handler
 import android.os.Looper
 import app.lockedin.core.auth.AuthFailure
 import app.lockedin.core.auth.AuthResult
-import app.lockedin.core.auth.AuthSession
 import app.lockedin.core.auth.AuthWire
+import app.lockedin.core.auth.BackendSettings
+import app.lockedin.core.auth.SessionManager
+import app.lockedin.core.auth.SessionRefresher
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Signs the student in to Supabase Auth so the AI helper can send their access token.
- * Both constants stay blank until the Supabase project exists; until then sign-in reports
- * "not connected" and nothing is sent anywhere.
+ * Supabase Auth over HTTPS: sign-in, token refresh and revoke. Every call runs on a background thread.
+ * Results reach the UI on the main thread. Nothing here stores a token; the SessionManager does that.
  */
-object AuthClient {
-    /** https://<project>.supabase.co once the project exists. Public by design. */
-    const val SUPABASE_URL = ""
-    /** The project's anon (publishable) key. Never the service role key. */
-    const val SUPABASE_ANON_KEY = ""
-
+class AuthClient(
+    private val url: String = BackendConfig.supabaseUrl,
+    private val anonKey: String = BackendConfig.anonKey,
+) : SessionRefresher {
     private val main = Handler(Looper.getMainLooper())
 
-    /** Calls back on the main thread with null on success, or a message to show the student. */
-    fun signIn(email: String, password: String, onDone: (String?) -> Unit) {
-        if (SUPABASE_URL.isBlank() || SUPABASE_ANON_KEY.isBlank()) {
-            onDone("Sign-in is not connected to a server yet.")
-            return
-        }
+    /** Signs in and stores the session. Calls back on the main thread with null on success, or a message. */
+    fun signIn(manager: SessionManager, email: String, password: String, onDone: (String?) -> Unit) {
+        BackendSettings.problems(url, anonKey).firstOrNull()?.let { onDone(it); return }
         if (email.isBlank() || password.isEmpty()) {
             onDone("Enter your email and password.")
             return
         }
         Thread {
             val message = try {
-                val (status, body) = post(email, password)
+                val (status, body) = post(
+                    AuthWire.PASSWORD_PATH,
+                    AuthWire.encodeSignIn(email, password),
+                    bearer = null,
+                )
                 when (val result = AuthWire.decodeSignIn(status, body, System.currentTimeMillis())) {
                     is AuthResult.Signed -> {
-                        AuthStore.set(result.session)
+                        manager.begin(result.session)
                         null
                     }
                     is AuthResult.Failed -> messageFor(result.reason)
@@ -50,22 +50,46 @@ object AuthClient {
         }.start()
     }
 
-    fun signOut() = AuthStore.clear()
+    /** Refreshes an access token. Called by the SessionManager on a background thread. */
+    override fun refresh(refreshToken: String, nowMs: Long): AuthResult {
+        if (BackendSettings.problems(url, anonKey).isNotEmpty()) {
+            return AuthResult.Failed(AuthFailure.UNEXPECTED)
+        }
+        return try {
+            val (status, body) = post(AuthWire.REFRESH_PATH, AuthWire.encodeRefresh(refreshToken), bearer = null)
+            AuthWire.decodeRefresh(status, body, nowMs)
+        } catch (e: IOException) {
+            AuthResult.Failed(AuthFailure.UNEXPECTED)
+        }
+    }
 
-    private fun post(email: String, password: String): Pair<Int, String> {
-        val conn = URL(SUPABASE_URL.trimEnd('/') + AuthWire.TOKEN_PATH).openConnection() as HttpURLConnection
+    /** Best-effort: tells the server to revoke the session. Local sign-out never waits for this. */
+    override fun revoke(accessToken: String) {
+        if (BackendSettings.problems(url, anonKey).isNotEmpty()) return
+        Thread {
+            try {
+                post(AuthWire.LOGOUT_PATH, "{}", bearer = accessToken)
+            } catch (e: IOException) {
+                // Offline: the local session is already gone. The server token expires on its own.
+            }
+        }.start()
+    }
+
+    private fun post(path: String, body: String, bearer: String?): Pair<Int, String> {
+        val conn = URL(url + path).openConnection() as HttpURLConnection
         try {
             conn.requestMethod = "POST"
             conn.connectTimeout = 15_000
             conn.readTimeout = 30_000
             conn.doOutput = true
             conn.setRequestProperty("content-type", "application/json")
-            conn.setRequestProperty("apikey", SUPABASE_ANON_KEY)
-            conn.outputStream.use { it.write(AuthWire.encodeSignIn(email, password).toByteArray(Charsets.UTF_8)) }
+            conn.setRequestProperty("apikey", anonKey)
+            conn.setRequestProperty("authorization", "Bearer ${bearer ?: anonKey}")
+            conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
             val status = conn.responseCode
             val stream = if (status in 200..299) conn.inputStream else conn.errorStream
-            val body: String = stream?.use { it.bufferedReader(Charsets.UTF_8).readText() }.orEmpty()
-            return status to body
+            val text: String = stream?.use { it.bufferedReader(Charsets.UTF_8).readText() }.orEmpty()
+            return status to text
         } finally {
             conn.disconnect()
         }
@@ -73,31 +97,8 @@ object AuthClient {
 
     private fun messageFor(reason: AuthFailure): String = when (reason) {
         AuthFailure.INVALID_CREDENTIALS -> "That email and password did not match an account."
+        AuthFailure.SESSION_REJECTED -> "Your session has ended. Sign in again."
         AuthFailure.RATE_LIMITED -> "Too many attempts. Wait a few minutes and try again."
         AuthFailure.UNEXPECTED -> "Sign-in failed. Try again."
     }
-}
-
-/**
- * Holds the signed-in session for this app run only. Tokens are not written to disk: plain
- * SharedPreferences is not safe for them. Persisting them needs Android Keystore-backed storage,
- * which is a follow-up.
- */
-object AuthStore {
-    @Volatile
-    private var session: AuthSession? = null
-
-    fun set(value: AuthSession) {
-        session = value
-    }
-
-    fun clear() {
-        session = null
-    }
-
-    fun isSignedIn(): Boolean = session != null
-
-    /** The access token when it is still valid, otherwise null (the student signs in again). */
-    fun usableAccessToken(nowMs: Long = System.currentTimeMillis()): String? =
-        session?.takeIf { it.isUsable(nowMs) }?.accessToken
 }

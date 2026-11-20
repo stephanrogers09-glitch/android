@@ -47,6 +47,8 @@ compile $(find "$ROOT/shared/src/main" -name '*.kt') \
   "$ROOT/shared/src/test/kotlin/app/lockedin/core/AiWireChecks.kt" \
   "$ROOT/shared/src/test/kotlin/app/lockedin/core/SpecVectorChecks.kt" \
   "$ROOT/shared/src/test/kotlin/app/lockedin/core/AuthWireChecks.kt" \
+  "$ROOT/shared/src/test/kotlin/app/lockedin/core/SessionChecks.kt" \
+  "$ROOT/shared/src/test/kotlin/app/lockedin/core/BackendSettingsChecks.kt" \
   "$ROOT/app/src/main/java/app/lockedin/phone/AllowRules.kt" \
   "$ROOT/app/src/test/kotlin/app/lockedin/phone/AllowRulesChecks.kt"
 
@@ -61,6 +63,12 @@ java -cp "$OUT:$STDLIB" app.lockedin.core.SpecVectorChecksKt "$ROOT/shared/spec/
 
 echo "== running auth wire checks"
 java -cp "$OUT:$STDLIB" app.lockedin.core.AuthWireChecksKt
+
+echo "== running session lifecycle checks"
+java -cp "$OUT:$STDLIB" app.lockedin.core.SessionChecksKt
+
+echo "== running backend settings checks"
+java -cp "$OUT:$STDLIB" app.lockedin.core.BackendSettingsChecksKt
 
 echo "== running allowlist checks"
 java -cp "$OUT:$STDLIB" app.lockedin.phone.AllowRulesChecksKt
