@@ -51,6 +51,21 @@ fun main() {
     expect("user permitted allowed", true, AllowRules.isAllowed("com.example.reader", null, true))
     expect("unpermitted blocked", false, AllowRules.isAllowed("com.example.reader", null, false))
 
+    // Regression: preinstalled OEM call screens that are not the default dialer stay allowed.
+    expect(
+        "system OEM incall allowed",
+        true,
+        AllowRules.isAllowed("com.oem.incallui", null, false, isSystemApp = true),
+    )
+    // The same name from a user-installed app is still blocked.
+    expect(
+        "third-party incall name blocked",
+        false,
+        AllowRules.isAllowed("com.oem.incallui", null, false, isSystemApp = false),
+    )
+    // System photo apps are still blocked.
+    expect("system gallery blocked", false, AllowRules.isAllowed("com.oem.gallery", null, false, isSystemApp = true))
+
     println("allow rules checks: $passed passed, $failed failed")
     if (failed > 0) throw IllegalStateException("$failed allowlist check(s) failed")
 }

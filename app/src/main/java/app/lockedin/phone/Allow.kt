@@ -10,6 +10,7 @@ object Allow {
             packageName = packageName,
             defaultDialer = defaultDialer(context),
             permittedByUser = SessionStore.isPermitted(context, packageName),
+            isSystemApp = isSystemApp(context, packageName),
         )
     }
 
@@ -17,6 +18,16 @@ object Allow {
     private fun defaultDialer(context: Context): String? {
         val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
         return telecom?.defaultDialerPackage
+    }
+
+    /** True for apps preinstalled in the system image (OEM call screens), false for user-installed apps. */
+    private fun isSystemApp(context: Context, packageName: String): Boolean {
+        return try {
+            val info = context.packageManager.getApplicationInfo(packageName, 0)
+            (info.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+        } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+            false
+        }
     }
 
     fun isWhatsAppCall(packageName: String?, className: String?): Boolean {

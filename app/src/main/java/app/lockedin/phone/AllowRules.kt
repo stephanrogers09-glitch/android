@@ -31,12 +31,24 @@ object AllowRules {
     /** Photo apps stay blocked, even if the user chose to allow them. Same as before. */
     private val blockedNameParts = listOf("photo", "gallery", "album")
 
-    fun isAllowed(packageName: String, defaultDialer: String?, permittedByUser: Boolean): Boolean {
+    /**
+     * Name fragments that identify OEM call screens. Only honoured for preinstalled system apps, so
+     * a third-party app named "fake dialer" cannot use them.
+     */
+    private val systemCallNameParts = listOf("dialer", "incall", "telecom", "emergency")
+
+    fun isAllowed(
+        packageName: String,
+        defaultDialer: String?,
+        permittedByUser: Boolean,
+        isSystemApp: Boolean = false,
+    ): Boolean {
         if (packageName in alwaysAllowed) return true
         val name = packageName.lowercase()
         if (blockedNameParts.any { name.contains(it) }) return false
         if (permittedByUser) return true
         if (defaultDialer != null && packageName == defaultDialer) return true
-        return packageName in knownCallPackages
+        if (packageName in knownCallPackages) return true
+        return isSystemApp && systemCallNameParts.any { name.contains(it) }
     }
 }
