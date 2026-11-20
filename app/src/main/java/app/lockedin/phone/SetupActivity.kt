@@ -132,6 +132,15 @@ class SetupActivity : Activity() {
             setOnClickListener { openPlus(false) }
         })
 
+        column.addView(TextView(this).apply {
+            text = "Study session with AI"
+            setTextColor(Color.parseColor(COLOR_MUTED))
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setPadding(0, dp(8), 0, dp(8))
+            setOnClickListener { startActivity(Intent(this@SetupActivity, AiSessionActivity::class.java)) }
+        })
+
         setContentView(root)
         paint()
     }
