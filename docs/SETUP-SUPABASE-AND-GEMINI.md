@@ -126,6 +126,7 @@ So a phone can do everything except the terminal steps. Those need a computer wi
 
 1. In the Supabase dashboard, open **Authentication → Users** and choose the option to add a user. Labels may differ slightly.
 2. Enter an invented test email and a strong test password. If there is an "auto confirm" option, tick it so you can sign in straight away.
+3. **Turn off public sign-ups before going live.** The app has no sign-up screen, and every new account gets its own daily AI quota, so open sign-up lets one person multiply their quota. In the dashboard, open **Authentication** settings and disable new user sign-ups (label may differ; confirm the option is off). Only the accounts you create are then able to sign in.
 
 ### E. The app (phone or computer)
 
@@ -133,7 +134,7 @@ Choose one of two routes.
 
 **Route 1, CI build on GitHub (works from a phone):**
 1. On github.com, open the repository, then **Settings → Secrets and variables → Actions → Variables**.
-2. Add two repository **variables** (not secrets): `LOCKEDIN_SUPABASE_URL` set to the Project URL, and `LOCKEDIN_SUPABASE_ANON_KEY` set to the publishable key. These values are public.
+2. Add two repository **variables** (not secrets): `LOCKEDIN_SUPABASE_URL` set to the Project URL, and `LOCKEDIN_SUPABASE_ANON_KEY` set to the publishable key. Variables are not masked in logs and are not for sensitive data. Add only these two public values. **Never put a secret key, Gemini key, database password or keystore password in a variable or a secret named like one of these.**
 3. Re-run the **Verify** workflow on the feature branch.
 4. Download the `lockedin-debug-apk` artifact from that run and install it. Android will ask you to allow installing from this source.
 
@@ -180,3 +181,6 @@ If you are stuck, stop and ask. Describe the step and the exact message, with an
 - **Gemini free-tier data terms and country availability:** not verified; the page could not be retrieved.
 - **Model `gemini-2.5-flash`:** the default. Confirm your key can use it; set `GEMINI_MODEL` in the function secrets if not.
 - **Dashboard labels and paths** (API Keys, Users, Logs): may differ from this guide.
+- **Public sign-up setting** (section 4, step D3): the dashboard option name is unverified.
+- **Whether a stolen access token is revoked server-side:** it is valid until it expires (about one hour). Signing out on the phone revokes it through Supabase.
+- **Repository variables and fork pull requests:** GitHub's pages we could read did not say whether variables are passed to workflows from forks. This does not matter for secrets, because none are used in CI.

@@ -71,9 +71,16 @@ export function readEnv(
   };
 }
 
+// Largest request body accepted. Context is at most 12,000 characters; JSON escaping can multiply that
+// several times, so 96 KB leaves room for valid input and refuses anything larger.
+export const MAX_BODY_BYTES = 96_000;
+export const UPSTREAM_TIMEOUT_MS = 25_000;
+
 export interface AiDeps {
   fetch: (input: string, init?: RequestInit) => Promise<Response>;
   env: AiEnv;
+  // Optional: overridable for tests. Defaults to UPSTREAM_TIMEOUT_MS.
+  timeoutMs?: number;
 }
 
 interface QuotaAnswer {
@@ -180,9 +187,16 @@ export async function handleAiRequest(req: Request, deps: AiDeps): Promise<Respo
   const userId = await userIdFromToken(deps, token);
   if (!userId) return json(401, { error: "sign_in_required" });
 
+  // Cap the body before parsing. Valid requests are at most 12,000 context characters plus a short
+  // question, so anything near this size is refused before it can use memory or quota.
+  const declared = Number(req.headers.get("content-length") ?? "0");
+  if (declared > MAX_BODY_BYTES) return json(413, { error: "body_too_large" });
+  const raw = await req.text();
+  if (raw.length > MAX_BODY_BYTES) return json(413, { error: "body_too_large" });
+
   let parsed: unknown;
   try {
-    parsed = await req.json();
+    parsed = JSON.parse(raw);
   } catch {
     return json(400, { error: "invalid_json" });
   }
@@ -198,12 +212,16 @@ export async function handleAiRequest(req: Request, deps: AiDeps): Promise<Respo
 
   const maxTokens = quota.max_output_tokens ?? 256;
   const model = encodeURIComponent(deps.env.geminiModel);
-  let upstream: Response;
+  // A hung upstream call must not hold the function open or keep the reserved request charged.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? UPSTREAM_TIMEOUT_MS);
+  let text = "";
   try {
-    upstream = await deps.fetch(
+    const upstream = await deps.fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
       {
         method: "POST",
+        signal: controller.signal,
         headers: {
           "content-type": "application/json",
           "x-goog-api-key": deps.env.geminiApiKey,
@@ -220,20 +238,19 @@ export async function handleAiRequest(req: Request, deps: AiDeps): Promise<Respo
         }),
       },
     );
+    if (!upstream.ok) throw new Error("upstream status");
+    const data = (await upstream.json()) as {
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
+    };
+    text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("").trim() ?? "";
+    if (!text) throw new Error("empty answer");
   } catch {
+    // Network error, timeout, bad status, non-JSON or empty answer: all are refunded, none is charged.
+    clearTimeout(timer);
     await refund(deps, userId);
     return json(502, { error: "ai_failed" });
   }
-
-  if (!upstream.ok) {
-    await refund(deps, userId);
-    return json(502, { error: "ai_failed" });
-  }
-
-  const data = (await upstream.json()) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
-  };
-  const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("").trim() ?? "";
+  clearTimeout(timer);
   if (!text) {
     await refund(deps, userId);
     return json(502, { error: "ai_failed" });

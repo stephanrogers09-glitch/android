@@ -232,3 +232,31 @@ test("the secret key is sent only in apikey, never as a bearer token", async () 
     assert.equal(c.init.headers.authorization, undefined, `${c.url} must not send a bearer header`);
   }
 });
+
+test("an oversized body is refused before any quota is used", async () => {
+  const net = fakeNetwork(standardHandlers({ quota: allowed }));
+  const res = await run(post({ task: "EXPLAIN", context: "a".repeat(100_000) }), net);
+  assert.equal(res.status, 413);
+  assert.equal(net.calls.some((c) => c.url.includes("ai_consume_quota")), false, "no quota charged");
+  assert.equal(net.calls.some((c) => isGemini(c.url)), false, "no AI call");
+});
+
+test("a hung Gemini call is aborted, refunded, and returns 502", async () => {
+  const hang = (_url, init) =>
+    new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(new Error("aborted"))));
+  const net = fakeNetwork(standardHandlers({ quota: allowed, gemini: hang }));
+  const res = await handleAiRequest(post({ task: "EXPLAIN", context: "x" }), {
+    fetch: net.fetch,
+    env: ENV,
+    timeoutMs: 20,
+  });
+  assert.equal(res.status, 502);
+  assert.equal(net.calls.filter((c) => c.url.includes("ai_refund_quota")).length, 1, "refunded once");
+});
+
+test("a non-JSON Gemini reply is refunded and returns 502, not a crash", async () => {
+  const net = fakeNetwork(standardHandlers({ quota: allowed, gemini: () => new Response("<html>", { status: 200 }) }));
+  const res = await run(post({ task: "EXPLAIN", context: "x" }), net);
+  assert.equal(res.status, 502);
+  assert.equal(net.calls.filter((c) => c.url.includes("ai_refund_quota")).length, 1, "refunded once");
+});
