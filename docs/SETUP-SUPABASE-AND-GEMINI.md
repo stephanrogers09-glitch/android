@@ -1,163 +1,182 @@
 # Setup: Supabase and Gemini for the LockedIn study assistant
 
-This guide takes you from nothing to a working sign-in and AI study request.
-It is for a first-time setup. Nothing here is done for you automatically: you
-create the accounts, you copy the values, and you run the commands yourself.
+Goal: one successful sign-in and one successful Gemini study request, from a fresh start.
+Nothing here is automatic. You create the accounts, copy the values, and run the commands.
 
-**Read the cost and account notes in section 0 first.**
+Last checked against Supabase's published documentation on 2026-11-21. Section 7 lists
+what could not be verified; read it before you start.
 
 ---
 
-## 0. Before you start: accounts, cards and costs
+## 0. Before you start: costs, cards and privacy
 
-| Service | What you create | Card needed? | Cost | Notes |
+| Item | What you do | Card? | Cost | Notes |
 |---|---|---|---|---|
-| Supabase | A free project | Check at sign-up. We have not verified whether a card is required. | Free tier. Pro starts at about $25/month. | Free projects **pause after one week of inactivity**. Unpausing is a click in the dashboard. |
-| Google AI Studio (Gemini) | An API key | Do **not** enable billing. | Free tier with limits. | Read Google's current free-tier data-use terms before using real student notes. |
-| GitHub | Already in use for CI | No | Free | Used only to build the APK. |
+| Supabase | Create a project | **Unverified.** Read the sign-up and billing pages. If a card is requested, stop and ask. | Free plan. Current limits and pause rules: check the pricing page. | Pro is a paid upgrade. Do not upgrade. |
+| Google AI Studio (Gemini) | Create an API key | **Do not enable billing.** | Free tier, with limits. Limits change. | Free-tier data terms: see privacy below. |
+| GitHub | Run CI, download APK | No | Free for this repo | Already in use. |
 
-**Do not enable billing on Google Cloud or upgrade Supabase** during this
-setup. If a step asks for a card or a payment, stop and check with the project
-owner first. Limits, prices and card rules change; check the live pages.
+**Privacy, before you send any real material:**
+
+- **Supabase** stores the test user's email and a password hash, and a per-user count of AI requests. The project region is chosen when you create it.
+- **Gemini:** each study request you send is transmitted to Google. Under Google's **unpaid (free) tier**, Google's terms have historically allowed submitted content to be used to improve its products, and human reviewers may read it. **We could not retrieve the current terms, so this is unverified.** Read the current Gemini API terms before using anything personal, and use only invented or public study text for this test.
+- The app sends a study request only when you press the button, and nothing is sent at sign-in beyond the email and password you type into Supabase.
 
 ---
 
-## 1. Know which values are public and which are secret
-
-This is the most important table in the guide. Read it before copying anything.
+## 1. Public and secret values
 
 | Value | Public or secret | Where it goes | Never put in |
 |---|---|---|---|
-| Project URL (`https://xxxx.supabase.co`) | Public | Android build settings | — |
-| Publishable key (`sb_publishable_…`) or legacy `anon` key | Public (designed for apps) | Android build settings, and the function setting `LOCKEDIN_PUBLISHABLE_KEY` | — |
-| Secret key (`sb_secret_…`) or legacy `service_role` key | **SECRET** | Function setting `LOCKEDIN_SECRET_KEY` only | The Android app, source files, GitHub, chat |
-| Gemini API key | **SECRET** | Function setting `GEMINI_API_KEY` only | The Android app, source files, GitHub, chat |
-| Database password | **SECRET** | Your password manager | Source files, chat |
-| Release keystore file and passwords | **SECRET** | Kept by you, outside the repository | GitHub, chat |
+| Project URL (`https://<ref>.supabase.co`) | Public | Android build settings | — |
+| Publishable key (`sb_publishable_…`) | Public. Safe in apps, and the docs say it is not a JWT. | Android build settings; function secret `LOCKEDIN_PUBLISHABLE_KEY` | — |
+| Legacy `anon` key (long JWT starting `eyJ`) | Public. Supabase is deprecating it by end of 2026. | Only if you have no publishable key | — |
+| Secret key (`sb_secret_…`) | **SECRET** | Function secret `LOCKEDIN_SECRET_KEY` only | The app, source files, GitHub, chat |
+| Legacy `service_role` key | **SECRET** | Avoid; use the secret key | Same as above |
+| Gemini API key | **SECRET** | Function secret `GEMINI_API_KEY` only | The app, source files, GitHub, chat |
+| Database password | **SECRET** | Password manager | Source files, chat |
+| Release keystore and passwords | **SECRET** | Kept by you, outside the repo | GitHub, chat |
 
-Rules that follow from the table:
+Rules:
 
-- The Android app may contain the project URL and the publishable/anon key only.
-- A key starting with `sb_secret_` or a JWT whose role is `service_role` must never reach the phone. The app refuses both.
-- Do not paste any **SECRET** value into a file in this repository, into a GitHub issue, or into a chat.
-- If a secret is pasted somewhere by mistake, rotate it in the provider's dashboard straight away.
+- The app contains the project URL and the publishable key, and nothing else from this table.
+- Supabase's guidance is to send keys in the `apikey` header. Never send a key as `Authorization: Bearer`. Only a signed-in user's session token belongs in `Authorization`.
+- Supabase injects `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEYS` and `SUPABASE_SECRET_KEYS` into functions automatically. You do not set these yourself.
+- If a secret is pasted anywhere by mistake, rotate it in the Supabase dashboard or Google AI Studio right away.
 
 ---
 
-## 2. Create the Supabase free project
+## 2. Phone or computer?
 
-1. Open https://supabase.com and sign up. Check the page for any card requirement and stop if one is asked for.
-2. Choose **New project**. Pick a name such as `lockedin-dev` and a region near you.
-3. Set a strong **database password** and save it in your password manager (secret).
-4. Wait for the project to finish provisioning.
+| Step | Phone browser | Computer needed? |
+|---|---|---|
+| Create Supabase project, copy URL and publishable key | Yes | No |
+| Create Gemini key in AI Studio | Yes | No |
+| Create test user in the Supabase dashboard | Yes | No |
+| Set GitHub repository variables for the app | Yes, on github.com | No |
+| Download CI APK and install it | Yes, if your phone allows installing from this source | No |
+| `supabase login`, `link`, `db push`, `secrets set`, `functions deploy` | **No** | **Yes.** The Supabase CLI runs in a terminal. |
+| Local build with your own Gradle properties (optional alternative to CI) | No | Yes |
 
-## 3. Find the Project URL and the publishable key
+So a phone can do everything except the terminal steps. Those need a computer with the Supabase CLI installed.
 
-1. In the dashboard, open **Project Settings → API Keys** (the label may differ slightly).
-2. Copy the **Project URL**. It looks like `https://abcdwxyz.supabase.co`. This is **public**.
-3. Copy the **publishable key** (`sb_publishable_…`). This is **public**.
-   - If your project only shows the older **anon** key, copy that instead. It is a long JWT and also **public**.
-4. Find the **secret key** (`sb_secret_…`) or the **service_role** key. Do not copy it into any file. You will enter it only into the terminal in section 6, and only as a function secret. It is **SECRET**.
+---
 
-## 4. Create the Gemini key in Google AI Studio
+## 3. Minimum configuration for one sign-in and one AI request
 
-1. Open https://aistudio.google.com and sign in with a Google account.
-2. Go to **Get API key** and create a key. Choose a project when asked, and do **not** attach a billing account.
-3. Copy the key once. It is **SECRET**. Do not paste it into any file.
-4. Check the current free-tier limits and data-use terms on Google's pricing page before using real study material.
+1. Supabase project exists.
+2. Database migration applied with `supabase db push`.
+3. Function secrets set: `LOCKEDIN_PUBLISHABLE_KEY`, `LOCKEDIN_SECRET_KEY`, `GEMINI_API_KEY`.
+4. Function `ai-assist` deployed with JWT verification **on** (the default). Do not use `--no-verify-jwt`.
+5. App build has `SUPABASE_URL` and `SUPABASE_ANON_KEY` (see step 8). Blank values show a setup message.
+6. One test user in Supabase Auth.
 
-Note: the model name is set by `GEMINI_MODEL` and defaults to `gemini-2.5-flash`. Confirm that model is available to your key in AI Studio. If it is not, set `GEMINI_MODEL` to a model your key can use.
+**Not needed for this test:** release keystore, `GEMINI_MODEL` (the default is used), legacy keys, billing of any kind.
 
-## 5. Put the Android build settings in your own Gradle file
+---
 
-These two values are **public**, so they may live in your personal Gradle file. Keep that file outside the repository.
+## 4. Step by step
 
-Edit `~/.gradle/gradle.properties` (create it if it does not exist):
+### A. Supabase (phone or computer)
 
+1. Go to supabase.com and sign up. Read any card or billing prompt. **If a card is requested, stop and ask the project owner.**
+2. Choose **New project**. Give it a name and choose a region. Save the database password in your password manager.
+3. Wait for provisioning to finish.
+4. Open the project's **API Keys** page (under Project Settings). Copy the **Project URL** and the **publishable key**. Both are public. Keep the **secret key** in the dashboard for now; you will use it in step C3.
+
+### B. Gemini key (phone or computer)
+
+1. Go to aistudio.google.com and sign in.
+2. Choose **Get API key** and create a key. Do **not** attach a billing account.
+3. Store the key in your password manager. Do not paste it anywhere else.
+4. Read the current free-tier limits and data terms (see section 0).
+
+### C. Terminal steps (computer)
+
+1. Install the Supabase CLI using its official instructions for your system.
+2. From the repository folder:
+   ```bash
+   supabase login
+   supabase link --project-ref <your-project-ref>
+   ```
+   The project ref is the part of the Project URL before `.supabase.co`.
+3. Apply the database migration. It asks for the database password:
+   ```bash
+   supabase db push
+   ```
+4. Set the function secrets. Enter the values from your password manager. Using `read` keeps them out of your shell history:
+   ```bash
+   read -rs LOCKEDIN_PUBLISHABLE_KEY && export LOCKEDIN_PUBLISHABLE_KEY
+   read -rs LOCKEDIN_SECRET_KEY && export LOCKEDIN_SECRET_KEY
+   read -rs GEMINI_API_KEY && export GEMINI_API_KEY
+   supabase secrets set LOCKEDIN_PUBLISHABLE_KEY="$LOCKEDIN_PUBLISHABLE_KEY" \
+     LOCKEDIN_SECRET_KEY="$LOCKEDIN_SECRET_KEY" GEMINI_API_KEY="$GEMINI_API_KEY"
+   ```
+   Names starting with `SUPABASE_` are refused by the CLI, which is why the names above begin with `LOCKEDIN_`.
+5. Confirm the names are stored. This command shows names only:
+   ```bash
+   supabase secrets list
+   ```
+6. Deploy the function. Do not add `--no-verify-jwt`:
+   ```bash
+   supabase functions deploy ai-assist
+   ```
+
+### D. Test user (phone or computer)
+
+1. In the Supabase dashboard, open **Authentication → Users** and choose the option to add a user. Labels may differ slightly.
+2. Enter an invented test email and a strong test password. If there is an "auto confirm" option, tick it so you can sign in straight away.
+
+### E. The app (phone or computer)
+
+Choose one of two routes.
+
+**Route 1, CI build on GitHub (works from a phone):**
+1. On github.com, open the repository, then **Settings → Secrets and variables → Actions → Variables**.
+2. Add two repository **variables** (not secrets): `LOCKEDIN_SUPABASE_URL` set to the Project URL, and `LOCKEDIN_SUPABASE_ANON_KEY` set to the publishable key. These values are public.
+3. Re-run the **Verify** workflow on the feature branch.
+4. Download the `lockedin-debug-apk` artifact from that run and install it. Android will ask you to allow installing from this source.
+
+**Route 2, local build (computer):** add these to `~/.gradle/gradle.properties` (outside the repo) and run the debug build:
 ```properties
-lockedin.supabaseUrl=https://YOUR-PROJECT.supabase.co
+lockedin.supabaseUrl=https://<your-project-ref>.supabase.co
 lockedin.supabaseAnonKey=sb_publishable_YOUR_PUBLISHABLE_KEY
 ```
 
-Alternatively, set environment variables before building:
-
-- `LOCKEDIN_SUPABASE_URL`
-- `LOCKEDIN_SUPABASE_ANON_KEY`
-
-If either value is missing, the app shows a clear setup message on the study screen instead of crashing.
-
-Do **not** add the Gemini key or the secret key here. They never belong in the app.
-
-## 6. Store the secrets for the Edge Function
-
-Install the Supabase CLI following its official instructions for your system. Then, in a terminal inside the repository:
-
-```bash
-supabase login
-supabase link --project-ref YOUR-PROJECT-REF
-```
-
-`YOUR-PROJECT-REF` is the part of the Project URL before `.supabase.co`.
-
-Store the function secrets. Run this yourself, and replace the placeholders with your values. **Do not write the real values into a file.**
-
-```bash
-supabase secrets set \
-  LOCKEDIN_PUBLISHABLE_KEY='sb_publishable_YOUR_PUBLISHABLE_KEY' \
-  LOCKEDIN_SECRET_KEY='sb_secret_YOUR_SECRET_KEY' \
-  GEMINI_API_KEY='YOUR_GEMINI_KEY'
-```
-
-Notes:
-
-- The Supabase URL is provided to the function by Supabase itself. You do not set it.
-- Supabase does not accept secret names that start with `SUPABASE_`, which is why the function uses the `LOCKEDIN_*` names.
-- To confirm the names are stored (not the values), run `supabase secrets list`.
-- If the function is missing a setting, it returns HTTP 503 with `server_not_configured` and the **names** of the missing settings. No values are shown.
-
-## 7. Deploy the database and the function
-
-```bash
-supabase db push
-supabase functions deploy ai-assist
-```
-
-- `db push` applies the migration in `backend/supabase/migrations/`.
-- `functions deploy` uploads `backend/supabase/functions/ai-assist/`.
-- Deployment is a change to your live project. Only run it if you are happy for that project to go live with this code.
-
-## 8. Test sign-in and an AI request
-
-**Create a test student account.** In the dashboard, open **Authentication → Users → Add user**, and create a test email and password. Use a test address you own. Do not use real student data for this test.
-
-**Sign in from the app.** Build and install the debug APK from the CI artifact (`lockedin-debug-apk`). Open the study screen, sign in with the test account, and check that:
-
-1. Signing in succeeds and the study area appears.
-2. Closing and reopening the app keeps you signed in.
-3. Signing out returns you to the sign-in form.
-
-**Send one AI request.** Enter a short study question while signed in. Expect a short answer within a few seconds.
-
-If it fails, look at the message shown in the app:
-
-| Message in app | Meaning | What to check |
-|---|---|---|
-| Setup message about URL or key | Build settings missing or wrong | Section 5 |
-| Sign-in required | Session missing or expired | Sign in again |
-| Server not configured (lists names) | Function secret missing | Section 6, the named secret |
-| Quota or daily limit | Your configured limit was reached | Wait, or raise the limit in the database deliberately |
-| AI request failed | Gemini or the upstream call failed | Check the key, the model name, and the function logs in the dashboard |
-
-**Check the function logs** in the Supabase dashboard under **Edge Functions → ai-assist → Logs**. The function never logs request content or keys, so the logs show status only.
+**Test:**
+1. Open the study screen and sign in with the test user. Expect the study area to appear.
+2. Close the app completely and reopen it. Expect to still be signed in.
+3. Sign out. Expect the sign-in form to return.
+4. Sign in again, type an invented study paragraph, and ask for a summary. Expect a short answer within a few seconds.
 
 ---
 
-## 9. Things this guide does not do
+## 5. If something fails
 
-- It does not create a Google Cloud billing account, upgrade Supabase, or buy a domain.
-- It does not sign the release APK. Release signing needs your own keystore, which you create and keep yourself. The release build refuses to run without it and never falls back to the debug key.
-- It does not verify that a card is or is not required by Supabase. Check that page at sign-up.
+| What you see | Meaning | Fix |
+|---|---|---|
+| Setup message on the study screen | App build has no URL or key | Step E, Route 1 variables, then re-run CI |
+| `sign_in_required` / sign-in fails | Wrong email or password, or user not confirmed | Re-check the test user; confirm it |
+| `server_not_configured` with names listed | A function secret is missing (names only) | Set the named secret, step C4 |
+| HTTP 429 `quota_exceeded` | Configured daily limit reached | Wait, or change the limit in the database |
+| `ai_failed` (HTTP 502) | Gemini or an internal call failed | Check the Gemini key and model; check function logs |
+| Function logs | Status and error codes only; the function does not log content or keys | Supabase dashboard → Edge Functions → `ai-assist` → Logs (label may differ) |
 
-## 10. If you are stuck
+If you are stuck, stop and ask. Describe the step and the exact message, with any secret replaced by `[REDACTED]`. Never paste a secret.
 
-Stop and ask. Do not paste **SECRET** values into the question. Describe the step and the exact message you see, with any secret replaced by `[REDACTED]`.
+---
+
+## 6. What this guide does not do
+
+- It does not create billing, upgrade Supabase, or buy anything.
+- It does not sign a release APK. Release signing needs your own keystore, which you create and keep. The release build refuses to run without it and never falls back to the debug key.
+
+---
+
+## 7. Unverified items (check before relying on them)
+
+- **Whether a secret key in the `apikey` header alone is accepted** for the quota database calls, with no `Authorization` header. The Supabase docs say keys belong in `apikey` and are not JWTs. This version of the function relies on that. The first live AI request is the test. If it fails, the function returns `ai_failed`, and that is the first thing to investigate.
+- **Supabase card requirement, free-plan limits and project pausing:** not verified against the current pricing page.
+- **Gemini free-tier data terms and country availability:** not verified; the page could not be retrieved.
+- **Model `gemini-2.5-flash`:** the default. Confirm your key can use it; set `GEMINI_MODEL` in the function secrets if not.
+- **Dashboard labels and paths** (API Keys, Users, Logs): may differ from this guide.

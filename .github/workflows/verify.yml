@@ -88,6 +88,11 @@ jobs:
       - name: Accept Android SDK licences
         run: yes | sdkmanager --licenses >/dev/null || true
       - name: Assemble debug APK
+        # Public values only (project URL and publishable key). Set them as repository VARIABLES, not secrets.
+        # If they are unset the APK still builds and shows the in-app setup message.
+        env:
+          LOCKEDIN_SUPABASE_URL: ${{ vars.LOCKEDIN_SUPABASE_URL }}
+          LOCKEDIN_SUPABASE_ANON_KEY: ${{ vars.LOCKEDIN_SUPABASE_ANON_KEY }}
         run: gradle :app:assembleDebug --no-daemon --stacktrace
       - name: Check APK contents and signature
         run: |

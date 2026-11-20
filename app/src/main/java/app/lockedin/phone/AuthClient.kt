@@ -83,8 +83,9 @@ class AuthClient(
             conn.readTimeout = 30_000
             conn.doOutput = true
             conn.setRequestProperty("content-type", "application/json")
+            // The publishable key goes in apikey only. Authorization carries a user token when there is one.
             conn.setRequestProperty("apikey", anonKey)
-            conn.setRequestProperty("authorization", "Bearer ${bearer ?: anonKey}")
+            if (bearer != null) conn.setRequestProperty("authorization", "Bearer $bearer")
             conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
             val status = conn.responseCode
             val stream = if (status in 200..299) conn.inputStream else conn.errorStream

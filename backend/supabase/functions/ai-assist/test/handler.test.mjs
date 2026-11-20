@@ -221,3 +221,14 @@ test("blank values count as missing", () => {
   assert.equal(result.ok, false);
   assert.deepEqual(result.missing, ["GEMINI_API_KEY"]);
 });
+
+test("the secret key is sent only in apikey, never as a bearer token", async () => {
+  const net = fakeNetwork(standardHandlers({ quota: allowed }));
+  await run(post({ task: "EXPLAIN", context: "x" }), net);
+  const rpcs = net.calls.filter((c) => c.url.includes("/rest/v1/rpc/"));
+  assert.ok(rpcs.length >= 1, "quota RPC was called");
+  for (const c of rpcs) {
+    assert.equal(c.init.headers.apikey, "service-key-test");
+    assert.equal(c.init.headers.authorization, undefined, `${c.url} must not send a bearer header`);
+  }
+});

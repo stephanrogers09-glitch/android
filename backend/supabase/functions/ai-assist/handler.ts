@@ -136,9 +136,9 @@ async function userIdFromToken(deps: AiDeps, token: string): Promise<string | nu
 async function rpc<T>(deps: AiDeps, name: string, args: Record<string, unknown>): Promise<T> {
   const res = await deps.fetch(`${deps.env.supabaseUrl}/rest/v1/rpc/${name}`, {
     method: "POST",
+    // Supabase: secret keys go in the apikey header only. They are not JWTs and must not be sent as bearer tokens.
     headers: {
       apikey: deps.env.supabaseServiceRoleKey,
-      authorization: `Bearer ${deps.env.supabaseServiceRoleKey}`,
       "content-type": "application/json",
     },
     body: JSON.stringify(args),
