@@ -89,6 +89,15 @@ jobs:
         run: yes | sdkmanager --licenses >/dev/null || true
       - name: Assemble debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Check APK contents and signature
+        run: |
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -n 1)
+          unzip -l "$APK" | grep -q "classes.dex" || { echo "no classes.dex in APK"; exit 1; }
+          unzip -l "$APK" | grep -q "AndroidManifest.xml" || { echo "no manifest in APK"; exit 1; }
+          unzip -l "$APK" | grep -q "AiSessionActivity" || true
+          unzip -p "$APK" AndroidManifest.xml | strings | grep -q "AiSessionActivity" || { echo "AiSessionActivity not declared"; exit 1; }
+          "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "$APK" | head -n 3
+          ls -l "$APK"
       - name: Run Android unit tests
         run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
