@@ -30,4 +30,12 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    // Platform-independent core (sessions, entitlements, AI wire format). Pure Kotlin, no Android
+    // imports, compiled into the app so there is one build and no second module to keep in sync.
+    sourceSets {
+        getByName("main") {
+            java.srcDir("../shared/src/main/kotlin")
+        }
+    }
 }

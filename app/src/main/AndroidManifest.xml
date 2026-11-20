@@ -48,6 +48,10 @@
             android:name=".PlusActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".AiSessionActivity"
+            android:exported="false" />
+
         <service
             android:name=".LockAccessibilityService"
             android:exported="true"
