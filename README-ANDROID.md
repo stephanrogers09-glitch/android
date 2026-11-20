@@ -35,7 +35,7 @@ The website version does not do this job. Do not ship that as the lock.
 
 ## AI study session (unverified build)
 
-- `AiSessionActivity` sends one request to the `ai-assist` function through `AiClient`. The device holds
+- `StudyActivity` is the study workspace: notes, the editor, and the tutor, which sends one request to the `ai-assist` function through `AiClient`. The device holds
   no Gemini key.
 - `AiClient.FUNCTION_URL` is blank until the Supabase project exists. Device sign-in does not exist yet,
   so requests return "not signed in". The screen shows these states instead of fake answers.

@@ -48,12 +48,10 @@
             android:name=".PlusActivity"
             android:exported="false" />
 
-        <activity
-            android:name=".AiSessionActivity"
-            android:exported="false" />
+
 
         <activity
-            android:name=".NotesActivity"
+            android:name=".StudyActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 

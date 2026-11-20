@@ -50,6 +50,7 @@ compile $(find "$ROOT/shared/src/main" -name '*.kt') \
   "$ROOT/shared/src/test/kotlin/app/lockedin/core/SessionChecks.kt" \
   "$ROOT/shared/src/test/kotlin/app/lockedin/core/BackendSettingsChecks.kt" \
   "$ROOT/shared/src/test/kotlin/app/lockedin/core/NoteBookChecks.kt" \
+  "$ROOT/shared/src/test/kotlin/app/lockedin/core/StudyChecks.kt" \
   "$ROOT/app/src/main/java/app/lockedin/phone/AllowRules.kt" \
   "$ROOT/app/src/test/kotlin/app/lockedin/phone/AllowRulesChecks.kt"
 
@@ -73,6 +74,9 @@ java -cp "$OUT:$STDLIB" app.lockedin.core.BackendSettingsChecksKt
 
 echo "== running study notes checks"
 java -cp "$OUT:$STDLIB" app.lockedin.core.NoteBookChecksKt
+
+echo "== running study workspace checks"
+java -cp "$OUT:$STDLIB" app.lockedin.core.StudyChecksKt
 
 echo "== running allowlist checks"
 java -cp "$OUT:$STDLIB" app.lockedin.phone.AllowRulesChecksKt

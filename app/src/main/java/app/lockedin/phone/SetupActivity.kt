@@ -133,25 +133,28 @@ class SetupActivity : Activity() {
         })
 
         column.addView(TextView(this).apply {
-            text = "Study notes"
+            text = "Study"
             setTextColor(Color.parseColor(COLOR_FG))
             textSize = 15f
             gravity = Gravity.CENTER
             setPadding(0, dp(8), 0, dp(8))
-            setOnClickListener { startActivity(Intent(this@SetupActivity, NotesActivity::class.java)) }
+            setOnClickListener { startActivity(Intent(this@SetupActivity, StudyActivity::class.java)) }
         })
 
-        column.addView(TextView(this).apply {
-            text = "Study session with AI"
-            setTextColor(Color.parseColor(COLOR_MUTED))
-            textSize = 15f
-            gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, dp(8))
-            setOnClickListener { startActivity(Intent(this@SetupActivity, AiSessionActivity::class.java)) }
-        })
 
+        // Opened from the study workspace: start with the note's focus line and the chosen length.
+        intent?.getStringExtra(EXTRA_LINE)?.let {
+            line.setText(it)
+            line.setSelection(line.text.length)
+        }
+        intent?.getStringExtra(EXTRA_PRESET)?.let { selected = Preset.fromId(it) }
         setContentView(root)
         paint()
+    }
+
+    companion object {
+        const val EXTRA_PRESET = "app.lockedin.phone.PRESET"
+        const val EXTRA_LINE = "app.lockedin.phone.LINE"
     }
 
     override fun onResume() {
