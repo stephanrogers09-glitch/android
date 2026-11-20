@@ -45,6 +45,7 @@ echo "== compiling shared core and allowlist rules"
 compile $(find "$ROOT/shared/src/main" -name '*.kt') \
   "$ROOT/shared/src/test/kotlin/app/lockedin/core/CoreChecks.kt" \
   "$ROOT/shared/src/test/kotlin/app/lockedin/core/AiWireChecks.kt" \
+  "$ROOT/shared/src/test/kotlin/app/lockedin/core/SpecVectorChecks.kt" \
   "$ROOT/app/src/main/java/app/lockedin/phone/AllowRules.kt" \
   "$ROOT/app/src/test/kotlin/app/lockedin/phone/AllowRulesChecks.kt"
 
@@ -53,6 +54,9 @@ java -cp "$OUT:$STDLIB" app.lockedin.core.CoreChecksKt
 
 echo "== running AI wire checks"
 java -cp "$OUT:$STDLIB" app.lockedin.core.AiWireChecksKt
+
+echo "== running cross-platform spec vectors (Kotlin reference)"
+java -cp "$OUT:$STDLIB" app.lockedin.core.SpecVectorChecksKt "$ROOT/shared/spec/vectors.json"
 
 echo "== running allowlist checks"
 java -cp "$OUT:$STDLIB" app.lockedin.phone.AllowRulesChecksKt
