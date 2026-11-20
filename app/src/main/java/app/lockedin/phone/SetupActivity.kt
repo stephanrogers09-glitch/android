@@ -133,6 +133,15 @@ class SetupActivity : Activity() {
         })
 
         column.addView(TextView(this).apply {
+            text = "Study notes"
+            setTextColor(Color.parseColor(COLOR_FG))
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setPadding(0, dp(8), 0, dp(8))
+            setOnClickListener { startActivity(Intent(this@SetupActivity, NotesActivity::class.java)) }
+        })
+
+        column.addView(TextView(this).apply {
             text = "Study session with AI"
             setTextColor(Color.parseColor(COLOR_MUTED))
             textSize = 15f

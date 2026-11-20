@@ -110,6 +110,7 @@ class AiSessionActivity : Activity() {
             setPadding(dp(12), dp(12), dp(12), dp(12))
         }
         sessionBlock.addView(material.also { it.fillWidth() })
+        intent?.getStringExtra(EXTRA_MATERIAL)?.let { material.setText(it) }
 
         question = EditText(this).apply {
             hint = "Your question (only for Ask a question)"
@@ -149,6 +150,11 @@ class AiSessionActivity : Activity() {
     override fun onResume() {
         super.onResume()
         render()
+    }
+
+    companion object {
+        /** The text of a study note, passed in when the student asks the AI helper about it. */
+        const val EXTRA_MATERIAL = "app.lockedin.phone.MATERIAL"
     }
 
     private fun field(hint: String, type: Int): EditText = EditText(this).apply {

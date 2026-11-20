@@ -52,6 +52,11 @@
             android:name=".AiSessionActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".NotesActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
         <service
             android:name=".LockAccessibilityService"
             android:exported="true"
