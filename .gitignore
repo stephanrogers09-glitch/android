@@ -1,0 +1,20 @@
+# Local Supabase CLI state (contains the project ref and CLI settings)
+backend/supabase/.temp/
+backend/supabase/.branches/
+
+# Local secrets and signing material: never commit these
+*.env
+.env
+.env.*
+local.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
+gradle.properties.local
+secrets.properties
+
+# Build output
+build/
+.gradle/
+*.apk
