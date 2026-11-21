@@ -3,11 +3,15 @@ package app.lockedin.core
 import app.lockedin.core.intelligence.AiRules
 import app.lockedin.core.intelligence.AiTask
 import app.lockedin.core.study.StudyAction
+import app.lockedin.core.notes.Note
+import app.lockedin.core.notes.NoteBook
+import app.lockedin.core.notes.NoteRules
 import app.lockedin.core.study.StudyContext
 import app.lockedin.core.study.StudyContextCodec
 import app.lockedin.core.study.StudyFocus
 import app.lockedin.core.study.StudyMaterial
 import app.lockedin.core.study.StudyPrompts
+import app.lockedin.core.study.StudyTime
 
 private var passed = 0
 private var failed = 0
@@ -61,6 +65,20 @@ fun main() {
     check("other version is empty", StudyContextCodec.decode("{\"v\":2}") == StudyContext())
     val huge = StudyContextCodec.decode(StudyContextCodec.encode(StudyContext(answer = "a".repeat(30_000))))
     check("saved answer is capped", huge.answer.length == StudyContextCodec.MAX_ANSWER_CHARS)
+
+    // Word counts and relative times for the note list.
+    check("blank body has no words", NoteRules.wordCount("   \n ") == 0)
+    check("words split on any whitespace", NoteRules.wordCount("  one two\tthree\nfour ") == 4)
+    val minute = 60_000L
+    val now = 10_000_000_000L
+    check("under a minute is just now", StudyTime.ago(now, now - 59_000L) == "just now")
+    check("future times read as just now", StudyTime.ago(now, now + 5 * minute) == "just now")
+    check("minutes", StudyTime.ago(now, now - 5 * minute) == "5m ago")
+    check("hours", StudyTime.ago(now, now - 3 * 60 * minute) == "3h ago")
+    check("yesterday", StudyTime.ago(now, now - 30 * 60 * minute) == "yesterday")
+    check("days", StudyTime.ago(now, now - 3 * 24 * 60 * minute) == "3d ago")
+    val titled = NoteBook(listOf(Note("a", "zebra", 1L), Note("b", "Apple", 2L), Note("c", "mango", 3L)))
+    check("sorted by title ignores case", titled.sortedByTitle().map { it.title } == listOf("Apple", "mango", "zebra"))
 
     println("study checks: $passed passed, $failed failed")
     if (failed > 0) throw IllegalStateException("$failed study check(s) failed")

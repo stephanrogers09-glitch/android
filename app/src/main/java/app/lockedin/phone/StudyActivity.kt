@@ -4,7 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
+import android.graphics.Typeface
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -13,8 +13,8 @@ import android.text.InputType
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
-import android.widget.Button
 import android.widget.EditText
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -25,46 +25,54 @@ import app.lockedin.core.intelligence.AiRules
 import app.lockedin.core.intelligence.Unavailability
 import app.lockedin.core.notes.Note
 import app.lockedin.core.notes.NoteBook
+import app.lockedin.core.notes.NoteRules
 import app.lockedin.core.study.StudyAction
 import app.lockedin.core.study.StudyContext
 import app.lockedin.core.study.StudyContextCodec
 import app.lockedin.core.study.StudyFocus
 import app.lockedin.core.study.StudyMaterial
 import app.lockedin.core.study.StudyPrompts
+import app.lockedin.core.study.StudyTime
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 /**
- * The study workspace. One screen holds the student's notes, the note they are writing, and a tutor
- * that answers from that note. Notes and focus sessions work without an account. The tutor needs a
- * signed-in student and a configured backend, and it says plainly when either is missing.
+ * The study workspace. The library lists notes; opening one shows the editor with a tutor docked
+ * beneath it. Notes and focus work without an account. The tutor needs a signed-in student and a
+ * configured backend, and it says plainly when either is missing.
  *
- * Only the text the student selects or the note they are working on is sent, and only when they press
- * an action. Gemini is called by the server function, never from this device.
+ * Only the selected text, or the whole note when nothing is selected, is sent, and only when the
+ * student presses an action. Gemini is called by the server function, never from this device.
  */
 class StudyActivity : Activity() {
-    private lateinit var page: LinearLayout
-    private lateinit var libraryBlock: LinearLayout
+    // Library
+    private lateinit var library: ScrollView
+    private lateinit var metaText: TextView
+    private lateinit var sortRow: LinearLayout
     private lateinit var resumeHolder: LinearLayout
     private lateinit var noteList: LinearLayout
     private lateinit var emptyText: TextView
-    private lateinit var workspaceBlock: LinearLayout
+
+    // Workspace
+    private lateinit var workspace: LinearLayout
     private lateinit var editor: EditText
     private lateinit var savedText: TextView
-    private lateinit var workingFrom: TextView
+    private lateinit var wordsText: TextView
+    private lateinit var contextTag: TextView
+    private lateinit var tutorStatus: TextView
     private lateinit var tutorNotice: TextView
     private lateinit var signInBox: LinearLayout
     private lateinit var readyBox: LinearLayout
     private lateinit var email: EditText
     private lateinit var password: EditText
-    private lateinit var signInButton: Button
+    private lateinit var signInButton: TextView
     private lateinit var signInStatus: TextView
-    private lateinit var question: EditText
-    private lateinit var askButton: Button
-    private lateinit var actionButtons: List<Button>
-    private lateinit var tutorStatus: TextView
+    private lateinit var answerScroll: ScrollView
     private lateinit var answerText: TextView
+    private lateinit var question: EditText
+    private lateinit var sendButton: TextView
+    private lateinit var actionPills: List<TextView>
 
     private val io: ExecutorService = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -75,6 +83,7 @@ class StudyActivity : Activity() {
 
     private var book = NoteBook()
     private var openId: String? = null
+    private var sortByTitle = false
     private var suppressSave = false
     private var tutorGeneration = 0
     private var lastAnswerNoteId: String? = null
@@ -82,21 +91,14 @@ class StudyActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val scroll = ScrollView(this).apply { setBackgroundColor(Color.parseColor(COLOR_BG)) }
-        page = LinearLayout(this).apply {
+        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(24), dp(18), dp(40))
+            setBackgroundColor(Color.parseColor(Ink.BLACK))
+            fitsSystemWindows = true
         }
-        scroll.addView(page)
-
-        page.addView(TextView(this).apply {
-            text = "STUDY"
-            quiet(this@StudyActivity, 13f, Color.parseColor(COLOR_MUTED))
-            letterSpacing = 0.18f
-        })
-        buildLibrary()
-        buildWorkspace()
-        setContentView(scroll)
+        buildLibrary(root)
+        buildWorkspace(root)
+        setContentView(root)
 
         // The notes file and the saved workspace state are read in the background.
         io.execute {
@@ -124,43 +126,98 @@ class StudyActivity : Activity() {
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        if (workspaceBlock.visibility == View.VISIBLE) closeNote() else super.onBackPressed()
+        if (workspace.visibility == View.VISIBLE) closeNote() else super.onBackPressed()
     }
 
     // --- Library -----------------------------------------------------------------------------
 
-    private fun buildLibrary() {
-        libraryBlock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        resumeHolder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        libraryBlock.addView(resumeHolder.also { it.fillWidth() })
-        libraryBlock.addView(actionButton("New note") { newNote() }.also { it.fillWidth() })
-        emptyText = TextView(this).apply {
-            text = "No notes yet. Write one, then ask the tutor about it."
-            quiet(this@StudyActivity, 15f)
-            setPadding(0, dp(14), 0, dp(8))
+    private fun buildLibrary(root: LinearLayout) {
+        library = ScrollView(this)
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(40), dp(24), dp(40))
         }
-        libraryBlock.addView(emptyText.also { it.fillWidth() })
+        library.addView(column)
+
+        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        header.addView(caption("Study", Ink.TEXT).apply { letterSpacing = 0.4f }, spacer())
+        header.addView(pill("New note", filled = true).apply { setOnClickListener { newNote() } })
+        column.addView(header.also { it.fillWidth() })
+
+        column.addView(prose("Notes", 40f).apply {
+            setPadding(0, dp(36), 0, dp(4))
+            letterSpacing = -0.02f
+        })
+        metaText = caption("")
+        column.addView(metaText.apply { setPadding(0, 0, 0, dp(24)) })
+
+        sortRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        column.addView(sortRow.also { it.fillWidth() })
+
+        resumeHolder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(20), 0, 0) }
+        column.addView(resumeHolder.also { it.fillWidth() })
+
+        emptyText = prose("No notes yet. Write one thought. The tutor can help with it later.", 16f, Ink.DIM).apply {
+            setPadding(0, dp(28), 0, 0)
+        }
+        column.addView(emptyText.also { it.fillWidth() })
         noteList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        libraryBlock.addView(noteList.also { it.fillWidth() })
-        page.addView(libraryBlock)
+        column.addView(noteList.also { it.fillWidth() })
+
+        root.addView(library, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
     }
 
     private fun showLibrary() {
         openId = null
-        workspaceBlock.visibility = View.GONE
-        libraryBlock.visibility = View.VISIBLE
-        resumeHolder.removeAllViews()
-        noteList.removeAllViews()
+        workspace.visibility = View.GONE
+        library.visibility = View.VISIBLE
+        val now = System.currentTimeMillis()
+        val notes = if (sortByTitle) book.sortedByTitle() else book.sorted()
 
+        metaText.text = "${notes.size} notes · ${notes.sumOf { NoteRules.wordCount(it.body) }} words"
+
+        sortRow.removeAllViews()
+        sortRow.addView(pill("Recent", filled = !sortByTitle).apply {
+            setOnClickListener { sortByTitle = false; showLibrary() }
+        })
+        sortRow.addView(pill("A–Z", filled = sortByTitle).apply {
+            setOnClickListener { sortByTitle = true; showLibrary() }
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            leftMargin = dp(8)
+        })
+
+        resumeHolder.removeAllViews()
         book.lastOpened()?.let { last ->
-            resumeHolder.addView(actionButton("Continue: ${last.title}") { openNote(last.id) }.also { it.fillWidth() })
+            resumeHolder.addView(resumeCard(last, now))
         }
-        val notes = book.sorted()
+
         emptyText.visibility = if (notes.isEmpty()) View.VISIBLE else View.GONE
-        for (note in notes) {
-            noteList.addView(actionButton(note.title) { openNote(note.id) }.also { it.fillWidth() })
-        }
+        noteList.removeAllViews()
+        for (note in notes) noteList.addView(noteRow(note, now))
     }
+
+    private fun resumeCard(note: Note, now: Long): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(18), dp(16), dp(18), dp(16))
+        background = surface(Ink.RAISED, 18, Ink.HAIRLINE)
+        addView(caption("Continue", Ink.GLOW))
+        addView(prose(note.title, 20f).apply { setPadding(0, dp(8), 0, dp(6)) })
+        addView(caption(meta(note, now)))
+        setOnClickListener { openNote(note.id) }
+    }
+
+    private fun noteRow(note: Note, now: Long): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(0, dp(18), 0, dp(18))
+        addView(prose(note.title, 17f))
+        addView(caption(meta(note, now)).apply { setPadding(0, dp(6), 0, 0) })
+        addView(rule())
+        isClickable = true
+        setOnClickListener { openNote(note.id) }
+    }
+
+    private fun meta(note: Note, now: Long): String =
+        "${StudyTime.ago(now, note.updatedAtMs)} · ${NoteRules.wordCount(note.body)} words"
 
     private fun newNote() {
         val id = UUID.randomUUID().toString()
@@ -175,123 +232,163 @@ class StudyActivity : Activity() {
 
     // --- Workspace ---------------------------------------------------------------------------
 
-    private fun buildWorkspace() {
-        workspaceBlock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    private fun buildWorkspace(root: LinearLayout) {
+        workspace = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        top.addView(actionButton("Notes") { closeNote() }, weightedParams())
-        top.addView(actionButton("Start focus") { startFocus() }, weightedParams())
-        top.addView(actionButton("Delete") { deleteOpen() }, weightedParams())
-        workspaceBlock.addView(top.also { it.fillWidth() })
+        val top = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(14), dp(18), dp(14))
+        }
+        top.addView(pill("‹  Notes").apply { setOnClickListener { closeNote() } })
+        top.addView(View(this), spacer())
+        top.addView(pill("Focus · 25 min").apply { setOnClickListener { startFocus() } })
+        workspace.addView(top.also { it.fillWidth() })
+        workspace.addView(rule())
 
-        savedText = TextView(this).apply { quiet(this@StudyActivity, 13f) }
-        workspaceBlock.addView(savedText.also { it.fillWidth() })
-
+        val editorScroll = ScrollView(this)
+        val editorColumn = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(24), dp(24), dp(28))
+        }
         editor = EditText(this).apply {
-            hint = "Write your notes here"
+            hint = "Start writing"
+            setHintTextColor(Color.parseColor(Ink.FAINT))
+            setTextColor(Color.parseColor(Ink.TEXT))
+            setBackgroundColor(Color.TRANSPARENT)
             textSize = 18f
-            minLines = 10
-            gravity = Gravity.TOP
-            setTextColor(Color.parseColor(COLOR_FG))
-            setHintTextColor(Color.parseColor(COLOR_MUTED))
-            setBackgroundColor(Color.parseColor(COLOR_LINE))
-            setPadding(dp(14), dp(14), dp(14), dp(14))
+            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+            setLineSpacing(0f, 1.45f)
+            gravity = Gravity.TOP or Gravity.START
+            setPadding(0, 0, 0, 0)
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
                 override fun afterTextChanged(s: Editable?) {
                     if (suppressSave || openId == null) return
-                    savedText.text = "Saving…"
+                    savedText.text = "SAVING…"
+                    wordsText.text = "${NoteRules.wordCount(s.toString())} WORDS"
                     main.removeCallbacks(autoSave)
                     main.postDelayed(autoSave, AUTO_SAVE_DELAY_MS)
                 }
             })
         }
-        workspaceBlock.addView(editor.also { it.fillWidth() })
+        editorColumn.addView(editor.also { it.fillWidth() })
 
-        workingFrom = TextView(this).apply {
-            quiet(this@StudyActivity, 13f)
-            setPadding(0, dp(6), 0, 0)
-        }
-        workspaceBlock.addView(workingFrom.also { it.fillWidth() })
-
-        // The tutor card. Its content is chosen by tutorState(): notice, sign-in, or the tools.
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(16))
-            background = GradientDrawable().apply {
-                cornerRadius = dp(16).toFloat()
-                setStroke(dp(1), Color.parseColor(COLOR_LINE))
-                setColor(Color.parseColor(COLOR_CARD))
-            }
-        }
-        card.addView(TextView(this).apply {
-            text = "TUTOR"
-            quiet(this@StudyActivity, 12f, Color.parseColor(COLOR_MUTED))
-            letterSpacing = 0.16f
+        val statusRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        savedText = caption("", Ink.FAINT)
+        statusRow.addView(savedText, spacer())
+        wordsText = caption("", Ink.FAINT)
+        statusRow.addView(wordsText)
+        statusRow.addView(caption("Delete", Ink.DIM).apply {
+            setPadding(dp(14), 0, 0, 0)
+            isClickable = true
+            setOnClickListener { deleteOpen() }
         })
-        tutorNotice = TextView(this).apply {
-            quiet(this@StudyActivity, 14f)
-            setPadding(0, dp(8), 0, dp(8))
+        editorColumn.addView(statusRow.also { it.fillWidth() }.apply { setPadding(0, dp(18), 0, 0) })
+        editorScroll.addView(editorColumn)
+        workspace.addView(editorScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+
+        workspace.addView(buildTutorPanel())
+        workspace.visibility = View.GONE
+        root.addView(workspace, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+    }
+
+    /** The tutor sits docked under the note. It shows exactly one of: notice, sign-in, or tools. */
+    private fun buildTutorPanel(): LinearLayout {
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(12), dp(18), dp(16))
+            setBackgroundColor(Color.parseColor(Ink.BLACK))
         }
-        card.addView(tutorNotice.also { it.fillWidth() })
+        panel.addView(rule())
+
+        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        header.addView(caption("Tutor", Ink.TEXT), spacer())
+        tutorStatus = caption("", Ink.DIM)
+        header.addView(tutorStatus)
+        panel.addView(header.also { it.fillWidth() }.apply { setPadding(0, dp(6), 0, dp(8)) })
+
+        tutorNotice = prose("", 14f, Ink.DIM).apply { setPadding(0, 0, 0, dp(8)) }
+        panel.addView(tutorNotice.also { it.fillWidth() })
 
         signInBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        email = field("Email", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS)
-        password = field("Password", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
+        email = underlined("Email", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS)
+        password = underlined("Password", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
         signInBox.addView(email.also { it.fillWidth() })
-        signInBox.addView(password.also { it.fillWidth() })
-        signInButton = actionButton("Sign in") { onSignIn() }
-        signInBox.addView(signInButton.also { it.fillWidth() })
-        signInStatus = TextView(this).apply { quiet(this@StudyActivity, 14f) }
+        signInBox.addView(rule())
+        signInBox.addView(password.also { it.fillWidth() }.apply { setPadding(0, dp(12), 0, dp(12)) })
+        signInBox.addView(rule())
+        signInButton = pill("Sign in", filled = true).apply {
+            setOnClickListener { onSignIn() }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                .apply { topMargin = dp(12) }
+        }
+        signInBox.addView(signInButton)
+        signInStatus = caption("", Ink.DIM).apply { setPadding(0, dp(8), 0, 0) }
         signInBox.addView(signInStatus.also { it.fillWidth() })
-        card.addView(signInBox.also { it.fillWidth() })
+        panel.addView(signInBox.also { it.fillWidth() })
+
+        answerScroll = ScrollView(this).apply { visibility = View.GONE }
+        answerText = prose("", 16f, Ink.TEXT).apply {
+            setTextIsSelectable(true)
+            setPadding(0, dp(4), 0, dp(12))
+        }
+        answerScroll.addView(answerText)
+        panel.addView(answerScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(190)))
 
         readyBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val buttons = listOf(
+        val chips = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        val chipRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val actions = listOf(
             "Explain" to StudyAction.EXPLAIN,
             "Summarise" to StudyAction.SUMMARISE,
             "Quiz me" to StudyAction.QUIZ,
             "Test my understanding" to StudyAction.CHECK,
             "Give examples" to StudyAction.EXAMPLES,
         )
-        val made = buttons.map { (label, action) -> actionButton(label) { runAction(action) } }
-        actionButtons = made
-        readyBox.addView(row(made[0], made[1], made[2]).also { it.fillWidth() })
-        readyBox.addView(row(made[3], made[4]).also { it.fillWidth() })
+        actionPills = actions.map { (label, action) ->
+            pill(label).apply {
+                setOnClickListener { runAction(action) }
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                    .apply { rightMargin = dp(8) }
+            }
+        }
+        actionPills.forEach { chipRow.addView(it) }
+        chips.addView(chipRow)
+        readyBox.addView(chips.also { it.fillWidth() }.apply { setPadding(0, 0, 0, dp(12)) })
 
+        val inputBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(4), dp(6), dp(4))
+            background = surface(Ink.RAISED, 30, Ink.HAIRLINE)
+        }
+        contextTag = caption("Note", Ink.GLOW).apply { setPadding(0, 0, dp(10), 0) }
+        inputBar.addView(contextTag)
         question = EditText(this).apply {
-            hint = "Ask about this note…"
+            hint = "Ask about this note"
+            setHintTextColor(Color.parseColor(Ink.FAINT))
+            setTextColor(Color.parseColor(Ink.TEXT))
+            setBackgroundColor(Color.TRANSPARENT)
+            textSize = 15f
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-            textSize = 16f
-            setTextColor(Color.parseColor(COLOR_FG))
-            setHintTextColor(Color.parseColor(COLOR_MUTED))
-            setBackgroundColor(Color.parseColor(COLOR_LINE))
-            setPadding(dp(12), dp(12), dp(12), dp(12))
+            setSingleLine(true)
         }
-        readyBox.addView(question.also { it.fillWidth() })
-        askButton = actionButton("Ask") { askQuestion() }
-        readyBox.addView(askButton.also { it.fillWidth() })
-        card.addView(readyBox.also { it.fillWidth() })
-
-        tutorStatus = TextView(this).apply { quiet(this@StudyActivity, 14f) }
-        card.addView(tutorStatus.also { it.fillWidth() })
-        answerText = TextView(this).apply {
-            setTextColor(Color.parseColor(COLOR_FG))
-            textSize = 16f
-            setTextIsSelectable(true)
-            setPadding(0, dp(12), 0, 0)
+        inputBar.addView(question, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        sendButton = TextView(this).apply {
+            text = "↑"
+            textSize = 18f
+            gravity = Gravity.CENTER
+            setTextColor(Color.parseColor(Ink.BLACK))
+            background = surface(Ink.TEXT, 50)
+            isClickable = true
+            setOnClickListener { askQuestion() }
         }
-        card.addView(answerText.also { it.fillWidth() })
-
-        workspaceBlock.addView(card.also {
-            val params = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            params.topMargin = dp(16)
-            it.layoutParams = params
-        })
-
-        workspaceBlock.visibility = View.GONE
-        page.addView(workspaceBlock)
+        inputBar.addView(sendButton, LinearLayout.LayoutParams(dp(40), dp(40)))
+        readyBox.addView(inputBar.also { it.fillWidth() })
+        panel.addView(readyBox.also { it.fillWidth() })
+        return panel
     }
 
     private fun openNote(id: String) {
@@ -302,11 +399,13 @@ class StudyActivity : Activity() {
         editor.setText(note.body)
         suppressSave = false
         savedText.text = ""
-        answerText.text = if (lastAnswerNoteId == id) lastAnswer else ""
+        wordsText.text = "${NoteRules.wordCount(note.body)} WORDS"
         tutorStatus.text = ""
-        libraryBlock.visibility = View.GONE
-        workspaceBlock.visibility = View.VISIBLE
-        updateWorkingFrom()
+        answerText.text = if (lastAnswerNoteId == id) lastAnswer else ""
+        answerScroll.visibility = if (answerText.text.isNotEmpty()) View.VISIBLE else View.GONE
+        library.visibility = View.GONE
+        workspace.visibility = View.VISIBLE
+        updateContextTag()
         refreshTutor()
         persist()
     }
@@ -327,8 +426,8 @@ class StudyActivity : Activity() {
             return
         }
         book = book.upsert(Note(id, body, System.currentTimeMillis()))
-        savedText.text = "Saved"
-        updateWorkingFrom()
+        savedText.text = "SAVED"
+        wordsText.text = "${NoteRules.wordCount(body)} WORDS"
         persist()
     }
 
@@ -350,26 +449,22 @@ class StudyActivity : Activity() {
         )
     }
 
-    private fun updateWorkingFrom() {
-        val selection = selectedText()
-        workingFrom.text = if (selection.isNotEmpty()) {
-            "Working from your selection (${selection.length} characters). Clear the selection to use the whole note."
-        } else {
-            "Working from the whole note. Select text to focus the tutor on part of it."
-        }
+    /** The context pill says what the tutor will read: the selection, or the whole note. */
+    private fun updateContextTag() {
+        val selected = selectedText().length
+        contextTag.text = if (selected > 0) "SELECTION · $selected" else "NOTE"
     }
 
     // --- Tutor -------------------------------------------------------------------------------
 
     private enum class TutorState { NOT_CONFIGURED, SIGN_IN, READY }
 
-    /** Decides what the tutor card shows. The sign-in check reads the Keystore off the main thread. */
+    /** Chooses what the tutor shows. The sign-in check reads the Keystore off the main thread. */
     private fun refreshTutor() {
         val problem = BackendConfig.problem()
         if (problem != null) {
             showTutor(TutorState.NOT_CONFIGURED)
-            tutorNotice.text = "The tutor is waiting for backend setup in this build, so it cannot answer yet. " +
-                "Notes and focus sessions work without it. ($problem)"
+            tutorNotice.text = "Offline · backend not configured in this build. Notes and focus work without it. ($problem)"
             return
         }
         val generation = ++tutorGeneration
@@ -393,21 +488,23 @@ class StudyActivity : Activity() {
     }
 
     private fun runAction(action: StudyAction) {
+        updateContextTag()
         send(StudyPrompts.requestFor(action, currentMaterial()))
     }
 
     private fun askQuestion() {
+        updateContextTag()
         send(StudyPrompts.questionRequest(currentMaterial(), question.text.toString()))
     }
 
     private fun send(request: AiRequest) {
         AiRules.validate(request)?.let {
-            tutorStatus.text = it
+            tutorStatus.text = it.uppercase()
             return
         }
         val noteId = openId
         setBusy(true)
-        tutorStatus.text = "Thinking…"
+        tutorStatus.text = "THINKING…"
         client.send(request) { result ->
             setBusy(false)
             show(result, noteId)
@@ -415,8 +512,9 @@ class StudyActivity : Activity() {
     }
 
     private fun setBusy(busy: Boolean) {
-        actionButtons.forEach { it.isEnabled = !busy }
-        askButton.isEnabled = !busy
+        actionPills.forEach { it.isEnabled = !busy }
+        sendButton.isEnabled = !busy
+        sendButton.alpha = if (busy) 0.4f else 1f
     }
 
     private fun show(result: AiResult, noteId: String?) {
@@ -426,7 +524,10 @@ class StudyActivity : Activity() {
                 lastAnswerNoteId = noteId
                 lastAnswer = result.text
                 // An answer for a note the student has since left is kept, but not shown on screen.
-                if (noteId == openId) answerText.text = result.text
+                if (noteId == openId) {
+                    answerText.text = result.text
+                    answerScroll.visibility = View.VISIBLE
+                }
                 saveContext()
             }
             is AiResult.Unavailable -> {
@@ -434,24 +535,23 @@ class StudyActivity : Activity() {
                     showTutor(TutorState.SIGN_IN)
                     tutorNotice.text = "Your session has ended. Sign in again to use the tutor."
                 }
-                tutorStatus.text = unavailableText(result.reason)
+                tutorStatus.text = unavailableText(result.reason).uppercase()
             }
-            is AiResult.QuotaExceeded -> tutorStatus.text =
-                "You have used today's AI requests. They reset at midnight (Kampala time)."
-            is AiResult.Rejected -> tutorStatus.text = result.message
-            is AiResult.Failed -> tutorStatus.text = result.message
+            is AiResult.QuotaExceeded -> tutorStatus.text = "Daily limit reached · resets at midnight (Kampala)"
+            is AiResult.Rejected -> tutorStatus.text = result.message.uppercase()
+            is AiResult.Failed -> tutorStatus.text = result.message.uppercase()
         }
     }
 
     private fun unavailableText(reason: Unavailability): String = when (reason) {
         Unavailability.NOT_SIGNED_IN -> "Sign in to use the tutor."
-        Unavailability.OFFLINE -> "Could not reach the server. Your notes are still here; try again when you are online."
-        Unavailability.NOT_CONFIGURED -> "The tutor is not set up in this build yet."
-        Unavailability.SERVICE_DOWN -> "The tutor is switched off right now."
+        Unavailability.OFFLINE -> "No connection. Your notes are still here."
+        Unavailability.NOT_CONFIGURED -> "Tutor not set up in this build."
+        Unavailability.SERVICE_DOWN -> "Tutor is switched off right now."
     }
 
     private fun onSignIn() {
-        signInStatus.text = "Signing in…"
+        signInStatus.text = "SIGNING IN…"
         signInButton.isEnabled = false
         auth.signIn(manager, email.text.toString(), password.text.toString()) { message ->
             password.setText("")
@@ -460,7 +560,7 @@ class StudyActivity : Activity() {
                 signInStatus.text = ""
                 refreshTutor()
             } else {
-                signInStatus.text = message
+                signInStatus.text = message.uppercase()
             }
         }
     }
@@ -508,32 +608,17 @@ class StudyActivity : Activity() {
 
     // --- Helpers -----------------------------------------------------------------------------
 
-    private fun field(hint: String, type: Int): EditText = EditText(this).apply {
+    private fun underlined(hint: String, type: Int): EditText = EditText(this).apply {
         this.hint = hint
         inputType = type
-        setTextColor(Color.parseColor(COLOR_FG))
-        setHintTextColor(Color.parseColor(COLOR_MUTED))
-        setBackgroundColor(Color.parseColor(COLOR_LINE))
-        setPadding(dp(12), dp(12), dp(12), dp(12))
+        setHintTextColor(Color.parseColor(Ink.FAINT))
+        setTextColor(Color.parseColor(Ink.TEXT))
+        setBackgroundColor(Color.TRANSPARENT)
+        textSize = 16f
+        setPadding(0, dp(12), 0, dp(12))
     }
 
-    private fun actionButton(label: String, onClick: () -> Unit): Button = Button(this).apply {
-        text = label
-        isAllCaps = false
-        textSize = 14f
-        setOnClickListener { onClick() }
-        outline(this@StudyActivity)
-    }
-
-    private fun row(vararg views: View): LinearLayout = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        for (view in views) addView(view, weightedParams())
-    }
-
-    private fun weightedParams(): LinearLayout.LayoutParams =
-        LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-            setMargins(dp(3), dp(3), dp(3), dp(3))
-        }
+    private fun spacer(): LinearLayout.LayoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
 
     private companion object {
         const val AUTO_SAVE_DELAY_MS = 700L

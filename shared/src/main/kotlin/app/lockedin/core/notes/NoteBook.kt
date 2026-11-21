@@ -12,6 +12,8 @@ data class Note(val id: String, val body: String, val updatedAtMs: Long) {
 data class NoteBook(val notes: List<Note> = emptyList(), val lastOpenedId: String? = null) {
     fun sorted(): List<Note> = notes.sortedByDescending { it.updatedAtMs }
 
+    fun sortedByTitle(): List<Note> = notes.sortedBy { it.title.lowercase() }
+
     fun find(id: String): Note? = notes.firstOrNull { it.id == id }
 
     fun lastOpened(): Note? = lastOpenedId?.let { find(it) }
@@ -37,6 +39,9 @@ object NoteRules {
     const val MAX_BODY_CHARS = 50_000
     const val MAX_TITLE_CHARS = 60
     const val UNTITLED = "Untitled note"
+
+    /** Number of words in the body. Blank text has no words. */
+    fun wordCount(body: String): Int = body.trim().split(Regex("\\s+")).count { it.isNotEmpty() }
 
     /** The first non-blank line, trimmed and shortened to fit a list row. Empty notes are untitled. */
     fun titleFor(body: String): String {

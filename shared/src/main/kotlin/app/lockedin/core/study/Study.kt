@@ -81,3 +81,17 @@ object StudyContextCodec {
 
     private fun nullableQuote(value: String?): String = if (value == null) "null" else AiWire.quote(value)
 }
+
+/** Short relative times for note lists, such as "just now", "12m ago", "yesterday", "3d ago". */
+object StudyTime {
+    fun ago(nowMs: Long, thenMs: Long): String {
+        val minutes = (nowMs - thenMs) / 60_000
+        return when {
+            minutes < 1 -> "just now"
+            minutes < 60 -> "${minutes}m ago"
+            minutes < 24 * 60 -> "${minutes / 60}h ago"
+            minutes < 48 * 60 -> "yesterday"
+            else -> "${minutes / (24 * 60)}d ago"
+        }
+    }
+}
