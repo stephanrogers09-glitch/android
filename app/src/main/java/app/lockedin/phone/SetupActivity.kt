@@ -28,6 +28,7 @@ class SetupActivity : Activity() {
     private lateinit var setupBox: LinearLayout
     private val choices = linkedMapOf<Preset, Button>()
     private var selected = Preset.M25
+    private var studyNoteId: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,11 +51,7 @@ class SetupActivity : Activity() {
             textSize = 40f
             typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
         })
-        column.addView(caption("Choose a length. Write one line.", Ink.DIM).apply {
-            setPadding(0, dp(8), 0, dp(28))
-        })
-
-        column.addView(caption("Length", Ink.FAINT).apply { setPadding(0, 0, 0, dp(10)) })
+        column.addView(View(this), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(28)))
         listOf(Preset.M25, Preset.M90, Preset.MORNING, Preset.M2).forEach { preset ->
             val button = Button(this)
             button.text = choiceLabel(preset)
@@ -74,7 +71,7 @@ class SetupActivity : Activity() {
             column.addView(button)
         }
 
-        column.addView(caption("Commitment", Ink.FAINT).apply { setPadding(0, dp(18), 0, dp(6)) })
+        column.addView(View(this), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(18)))
         line = EditText(this)
         line.hint = "Do it."
         line.setHintTextColor(Color.parseColor(Ink.FAINT))
@@ -131,19 +128,38 @@ class SetupActivity : Activity() {
             setOnClickListener { openPlus(false) }
         })
 
-        // Opened from the study workspace: start with the note's focus line and the chosen length.
-        intent?.getStringExtra(EXTRA_LINE)?.let {
-            line.setText(it)
-            line.setSelection(line.text.length)
-        }
-        intent?.getStringExtra(EXTRA_PRESET)?.let { selected = Preset.fromId(it) }
         setContentView(root)
-        paint()
+        applyIntent()
     }
 
     companion object {
         const val EXTRA_PRESET = "app.lockedin.phone.PRESET"
         const val EXTRA_LINE = "app.lockedin.phone.LINE"
+        const val EXTRA_NOTE = "app.lockedin.phone.NOTE"
+        const val EXTRA_AUTOSTART = "app.lockedin.phone.AUTOSTART"
+    }
+
+    // The screen is single-task, so a later request from the study workspace arrives here.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        applyIntent()
+    }
+
+    /** Study passes the note's focus line, the chosen length and the note id. The 2-minute test starts at once. */
+    private fun applyIntent() {
+        val incoming = intent ?: return
+        incoming.getStringExtra(EXTRA_LINE)?.let {
+            line.setText(it)
+            line.setSelection(line.text.length)
+        }
+        incoming.getStringExtra(EXTRA_PRESET)?.let { selected = Preset.fromId(it) }
+        studyNoteId = incoming.getStringExtra(EXTRA_NOTE)
+        paint()
+        if (incoming.getBooleanExtra(EXTRA_AUTOSTART, false)) {
+            incoming.removeExtra(EXTRA_AUTOSTART)
+            if (ready()) startLock()
+        }
     }
 
     override fun onResume() {
@@ -178,6 +194,7 @@ class SetupActivity : Activity() {
         }
         SessionStore.markSetup(this)
         SessionStore.start(this, selected, text)
+        studyNoteId?.let { StudyFocusLog.begin(this, it, selected.minutes ?: 0, SessionStore.endAt(this)) }
         startActivity(Intent(this, LockActivity::class.java))
     }
 
@@ -220,12 +237,10 @@ class SetupActivity : Activity() {
         buildSetup()
     }
 
+    /** Only the permissions still missing are shown. Each one is a single action. */
     private fun buildSetup() {
         setupBox.removeAllViews()
-        setupBox.addView(caption("Permissions", Ink.FAINT).apply { setPadding(0, 0, 0, dp(10)) })
-        var needed = false
         if (!granted(Manifest.permission.CALL_PHONE)) {
-            needed = true
             setupBox.addView(setupButton("Allow calls") {
                 requestPermissions(
                     arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE),
@@ -234,19 +249,16 @@ class SetupActivity : Activity() {
             })
         }
         if (!granted(Manifest.permission.CAMERA)) {
-            needed = true
             setupBox.addView(setupButton("Allow camera and torch") {
                 requestPermissions(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO), 12)
             })
         }
         if (!Gate.accessibilityOn(this)) {
-            needed = true
             setupBox.addView(setupButton("Allow the lock") {
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             })
         }
         if (!Gate.adminOn(this)) {
-            needed = true
             setupBox.addView(setupButton("Block uninstall during a lock") {
                 startActivity(Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
                     putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, Gate.adminComponent(this@SetupActivity))
@@ -256,9 +268,6 @@ class SetupActivity : Activity() {
                     )
                 })
             })
-        }
-        if (!needed) {
-            setupBox.addView(caption("All set", Ink.DIM).apply { setPadding(0, 0, 0, dp(4)) })
         }
     }
 

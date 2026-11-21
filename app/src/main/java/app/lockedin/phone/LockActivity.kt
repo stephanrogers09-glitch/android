@@ -17,22 +17,15 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.window.OnBackInvokedDispatcher
-import app.lockedin.core.focus.FocusClock
 
 class LockActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private var released = false
     private var openingChild = false
     private lateinit var root: FrameLayout
-    private lateinit var word: TextView
-    private lateinit var clock: TextView
-    private lateinit var backAt: TextView
-    private lateinit var rail: LinearLayout
-    private lateinit var railFill: View
-    private lateinit var railRest: View
+    private lateinit var title: TextView
     private lateinit var sentence: TextView
     private lateinit var status: TextView
-    private lateinit var summary: TextView
     private lateinit var actions: LinearLayout
     private lateinit var callButton: ImageButton
     private lateinit var cameraButton: ImageButton
@@ -59,7 +52,7 @@ class LockActivity : Activity() {
         val column = LinearLayout(this)
         column.orientation = LinearLayout.VERTICAL
         column.gravity = Gravity.CENTER_HORIZONTAL
-        column.setPadding(dp(24), dp(64), dp(24), dp(36))
+        column.setPadding(dp(24), dp(56), dp(24), dp(36))
         root.addView(
             column,
             FrameLayout.LayoutParams(
@@ -68,47 +61,21 @@ class LockActivity : Activity() {
             )
         )
 
-        word = TextView(this)
-        word.gravity = Gravity.CENTER
-        word.letterSpacing = 0.28f
-        word.typeface = Typeface.MONOSPACE
-        column.addView(word)
-
-        clock = TextView(this)
-        clock.textSize = 76f
-        clock.typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
-        clock.gravity = Gravity.CENTER
-        clock.setPadding(0, dp(20), 0, 0)
-        column.addView(clock)
-
-        backAt = TextView(this)
-        backAt.gravity = Gravity.CENTER
-        backAt.setPadding(0, dp(6), 0, 0)
-        column.addView(backAt)
-
-        rail = LinearLayout(this)
-        rail.orientation = LinearLayout.HORIZONTAL
-        railFill = View(this)
-        railRest = View(this)
-        rail.addView(railFill, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 0f))
-        rail.addView(railRest, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1000f))
-        val railParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(2))
-        railParams.topMargin = dp(28)
-        column.addView(rail, railParams)
+        // Quiet by design: the state, the commitment and the lock status. No timer is shown.
+        title = TextView(this)
+        title.gravity = Gravity.CENTER
+        title.textSize = 40f
+        title.typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+        column.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f))
+        column.addView(title)
 
         sentence = TextView(this)
         sentence.gravity = Gravity.CENTER
-        sentence.textSize = 22f
+        sentence.textSize = 20f
         sentence.typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
         sentence.setLineSpacing(dp(4).toFloat(), 1f)
-        sentence.setPadding(dp(12), dp(32), dp(12), 0)
-        column.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f))
+        sentence.setPadding(dp(12), dp(20), dp(12), 0)
         column.addView(sentence, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-
-        summary = TextView(this)
-        summary.gravity = Gravity.CENTER
-        summary.setPadding(0, dp(18), 0, 0)
-        column.addView(summary, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         status = TextView(this)
         status.gravity = Gravity.CENTER
@@ -199,31 +166,17 @@ class LockActivity : Activity() {
         val now = System.currentTimeMillis()
         val active = SessionStore.isActive(this, now)
         released = !active
-        val endAt = SessionStore.endAt(this)
-        val line = SessionStore.line(this)
         paint()
         if (active) {
-            word.text = "LOCKED IN"
-            clock.text = FocusClock.countdown(FocusClock.remainingMs(endAt, now))
-            backAt.text = "until ${formatBackAt(endAt)}"
-            val share = FocusClock.progress(SessionStore.startedAt(this), endAt, now)
-            (railFill.layoutParams as LinearLayout.LayoutParams).weight = (share * 1000).toFloat()
-            (railRest.layoutParams as LinearLayout.LayoutParams).weight = ((1 - share) * 1000).toFloat()
-            rail.visibility = View.VISIBLE
-            rail.requestLayout()
-            sentence.text = line
-            summary.text = ""
+            title.text = "Locked in"
+            sentence.text = SessionStore.line(this)
             status.text = if (Gate.accessibilityOn(this)) "LOCK ON  ·  CALLS OPEN" else "LOCK OFF  ·  CHECK SETUP IN FOCUS"
             status.visibility = View.VISIBLE
             actions.visibility = View.VISIBLE
             doneButton.visibility = View.GONE
         } else {
-            word.text = "SESSION COMPLETE"
-            clock.text = "Done"
-            backAt.text = "ended ${formatBackAt(endAt)}".takeIf { endAt > 0L }.orEmpty()
-            rail.visibility = View.GONE
-            sentence.text = line
-            summary.text = completionSummary()
+            title.text = "Session complete"
+            sentence.text = ""
             status.visibility = View.GONE
             actions.visibility = View.GONE
             doneButton.visibility = View.VISIBLE
@@ -232,24 +185,10 @@ class LockActivity : Activity() {
         }
     }
 
-    /** What was done, read before Done clears the saved session. */
-    private fun completionSummary(): String {
-        val preset = SessionStore.presetId(this)?.let { Preset.fromId(it) } ?: return ""
-        return "Length: ${FocusClock.durationText(preset.minutes)}"
-    }
-
     private fun paint() {
         root.setBackgroundColor(Color.parseColor(Ink.BLACK))
-        word.setTextColor(Color.parseColor(Ink.DIM))
-        word.textSize = 11f
-        clock.setTextColor(Color.parseColor(Ink.TEXT))
-        backAt.setTextColor(Color.parseColor(Ink.DIM))
-        backAt.textSize = 14f
-        railFill.setBackgroundColor(Color.parseColor(Ink.TEXT))
-        railRest.setBackgroundColor(Color.parseColor(Ink.HAIRLINE))
+        title.setTextColor(Color.parseColor(Ink.TEXT))
         sentence.setTextColor(Color.parseColor(Ink.TEXT))
-        summary.setTextColor(Color.parseColor(Ink.DIM))
-        summary.textSize = 15f
         status.setTextColor(Color.parseColor(Ink.FAINT))
         paintLight()
     }

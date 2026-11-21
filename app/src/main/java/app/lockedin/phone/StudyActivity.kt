@@ -87,6 +87,7 @@ class StudyActivity : Activity() {
     private var sortByTitle = false
     private var suppressSave = false
     private var tutorGeneration = 0
+    private var libraryReady = false
     private var lastAnswerNoteId: String? = null
     private var lastAnswer = ""
 
@@ -108,6 +109,7 @@ class StudyActivity : Activity() {
             main.post {
                 book = loaded
                 draftFrom(context)
+                libraryReady = true
                 showLibrary()
             }
         }
@@ -170,7 +172,14 @@ class StudyActivity : Activity() {
         root.addView(libraryTabs)
     }
 
+    override fun onResume() {
+        super.onResume()
+        // A focus session started from here may have finished while the app was away.
+        if (libraryReady && openId == null) showLibrary()
+    }
+
     private fun showLibrary() {
+        StudyFocusLog.settle(this)
         openId = null
         workspace.visibility = View.GONE
         library.visibility = View.VISIBLE
@@ -220,8 +229,11 @@ class StudyActivity : Activity() {
         setOnClickListener { openNote(note.id) }
     }
 
-    private fun meta(note: Note, now: Long): String =
-        "${StudyTime.ago(now, note.updatedAtMs)} · ${NoteRules.wordCount(note.body)} words"
+    private fun meta(note: Note, now: Long): String {
+        val base = "${StudyTime.ago(now, note.updatedAtMs)} · ${NoteRules.wordCount(note.body)} words"
+        val focused = StudyFocusLog.minutes(this, note.id)
+        return if (focused > 0) "$base · $focused min focused" else base
+    }
 
     private fun newNote() {
         val id = UUID.randomUUID().toString()
@@ -246,7 +258,9 @@ class StudyActivity : Activity() {
         }
         top.addView(pill("‹  Notes").apply { setOnClickListener { closeNote() } })
         top.addView(View(this), spacer())
-        top.addView(pill("Focus · 25 min").apply { setOnClickListener { startFocus() } })
+        top.addView(pill("2 min test").apply { setOnClickListener { startFocus(Preset.M2, autostart = true) } })
+        top.addView(View(this), LinearLayout.LayoutParams(dp(8), 0))
+        top.addView(pill("Focus · 25 min").apply { setOnClickListener { startFocus(Preset.M25, autostart = false) } })
         workspace.addView(top.also { it.fillWidth() })
         workspace.addView(rule())
 
@@ -444,13 +458,16 @@ class StudyActivity : Activity() {
         showLibrary()
     }
 
-    private fun startFocus() {
+    /** Starts focus for the open note. The 2-minute test starts at once when the lock is already ready. */
+    private fun startFocus(preset: Preset, autostart: Boolean) {
         saveNow()
         val note = openId?.let { book.find(it) } ?: return
         startActivity(
             Intent(this, SetupActivity::class.java)
-                .putExtra(SetupActivity.EXTRA_PRESET, Preset.M25.id)
-                .putExtra(SetupActivity.EXTRA_LINE, StudyFocus.lineFor(note.title)),
+                .putExtra(SetupActivity.EXTRA_PRESET, preset.id)
+                .putExtra(SetupActivity.EXTRA_LINE, StudyFocus.lineFor(note.title))
+                .putExtra(SetupActivity.EXTRA_NOTE, note.id)
+                .putExtra(SetupActivity.EXTRA_AUTOSTART, autostart),
         )
     }
 

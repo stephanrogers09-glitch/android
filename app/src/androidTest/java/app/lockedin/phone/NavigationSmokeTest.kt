@@ -66,4 +66,16 @@ class NavigationSmokeTest {
         assertEquals(0L, SessionStore.startedAt(context))
         assertNull(SessionStore.presetId(context))
     }
+
+    @Test
+    fun studyFocusIsCreditedOnlyAfterItsEnd() {
+        val start = 1_000_000L
+        StudyFocusLog.begin(context, "note-focus-test", 2, start + 120_000L)
+        StudyFocusLog.settle(context, start + 60_000L)
+        assertEquals(0, StudyFocusLog.minutes(context, "note-focus-test"))
+        StudyFocusLog.settle(context, start + 120_000L)
+        assertEquals(2, StudyFocusLog.minutes(context, "note-focus-test"))
+        StudyFocusLog.settle(context, start + 240_000L)
+        assertEquals(2, StudyFocusLog.minutes(context, "note-focus-test"))
+    }
 }
