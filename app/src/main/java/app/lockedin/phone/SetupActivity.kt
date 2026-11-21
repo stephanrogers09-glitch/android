@@ -33,13 +33,13 @@ class SetupActivity : Activity() {
     private var selected = Preset.M25
     private var studyNoteId: String? = null
     private lateinit var suggestion: TextView
-    private var rotation = 0
+    private var step = 0
     private val handler = Handler(Looper.getMainLooper())
     private val rotate = object : Runnable {
         override fun run() {
-            rotation++
+            step++
             suggestion.animate().alpha(0f).setDuration(300).withEndAction {
-                suggestion.text = CommitmentSuggestions.at(rotation)
+                suggestion.text = CommitmentSuggestions.at(step)
                 suggestion.animate().alpha(1f).setDuration(300).start()
             }.start()
             handler.postDelayed(this, ROTATE_MS)
@@ -101,7 +101,7 @@ class SetupActivity : Activity() {
         column.addView(rule())
         // Rotating commitment suggestions. Tapping one fills the commitment; typing a custom one still works.
         suggestion = TextView(this).apply {
-            text = CommitmentSuggestions.at(rotation)
+            text = CommitmentSuggestions.at(step)
             setTextColor(Color.parseColor(Ink.DIM))
             textSize = 16f
             typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
