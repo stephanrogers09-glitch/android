@@ -38,6 +38,7 @@ object SessionStore {
     private const val LINE = "line"
     private const val PRESET = "preset"
     private const val PERMITTED = "permitted"
+    private const val STARTED = "startedAt"
     private const val SETUP_FILE = "locked-in-setup"
     private const val SETUP_DONE = "done"
 
@@ -47,6 +48,16 @@ object SessionStore {
 
     fun endAt(context: Context): Long {
         return context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getLong(END, 0L)
+    }
+
+    /** When the running session started, or 0 when unknown (sessions started before this was recorded). */
+    fun startedAt(context: Context): Long {
+        return context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getLong(STARTED, 0L)
+    }
+
+    /** The id of the preset the running or just-finished session was started with, or null. */
+    fun presetId(context: Context): String? {
+        return context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getString(PRESET, null)
     }
 
     fun line(context: Context): String {
@@ -72,6 +83,7 @@ object SessionStore {
             .putLong(END, preset.endAt(now))
             .putString(LINE, line.trim())
             .putString(PRESET, preset.id)
+            .putLong(STARTED, now)
             .putStringSet(PERMITTED, emptySet())
             .apply()
     }
@@ -81,6 +93,7 @@ object SessionStore {
             .remove(END)
             .remove(LINE)
             .remove(PRESET)
+            .remove(STARTED)
             .remove(PERMITTED)
             .apply()
     }

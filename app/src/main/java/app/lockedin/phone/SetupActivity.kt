@@ -20,6 +20,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
+/** The Focus tab: choose a length, write the commitment, grant the lock, and start. */
 class SetupActivity : Activity() {
     private lateinit var line: EditText
     private lateinit var understand: CheckBox
@@ -30,30 +31,35 @@ class SetupActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val root = ScrollView(this)
-        root.setBackgroundColor(Color.parseColor(COLOR_BG))
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor(Ink.BLACK))
+            fitsSystemWindows = true
+        }
+        val scroll = ScrollView(this)
         val column = LinearLayout(this)
         column.orientation = LinearLayout.VERTICAL
-        column.setPadding(dp(24), dp(56), dp(24), dp(36))
-        root.addView(column)
+        column.setPadding(dp(24), dp(56), dp(24), dp(32))
+        scroll.addView(column)
+        root.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        root.addView(tabBar(Tab.FOCUS))
 
         column.addView(TextView(this).apply {
-            text = "Locked In"
-            setTextColor(Color.parseColor(COLOR_FG))
+            text = "Focus"
+            setTextColor(Color.parseColor(Ink.TEXT))
             textSize = 40f
             typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
         })
-        column.addView(TextView(this).apply {
-            text = "Pick a time. Write one line. The rest of the phone waits."
-            quiet(this@SetupActivity, 16f)
-            setPadding(0, dp(12), 0, dp(28))
+        column.addView(caption("Choose a length. Write one line.", Ink.DIM).apply {
+            setPadding(0, dp(8), 0, dp(28))
         })
 
+        column.addView(caption("Length", Ink.FAINT).apply { setPadding(0, 0, 0, dp(10)) })
         listOf(Preset.M25, Preset.M90, Preset.MORNING, Preset.M2).forEach { preset ->
             val button = Button(this)
             button.text = choiceLabel(preset)
             button.isAllCaps = false
-            button.textSize = 18f
+            button.textSize = 17f
             button.setOnClickListener {
                 selected = preset
                 paint()
@@ -68,30 +74,23 @@ class SetupActivity : Activity() {
             column.addView(button)
         }
 
-        column.addView(TextView(this).apply {
-            text = "Your line"
-            quiet(this@SetupActivity, 14f)
-            setPadding(0, dp(18), 0, dp(6))
-        })
+        column.addView(caption("Commitment", Ink.FAINT).apply { setPadding(0, dp(18), 0, dp(6)) })
         line = EditText(this)
         line.hint = "Do it."
-        line.setHintTextColor(Color.parseColor(COLOR_MUTED))
-        line.setTextColor(Color.parseColor(COLOR_FG))
+        line.setHintTextColor(Color.parseColor(Ink.FAINT))
+        line.setTextColor(Color.parseColor(Ink.TEXT))
         line.textSize = 22f
         line.setBackgroundColor(Color.TRANSPARENT)
         line.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
         line.maxLines = 2
         line.filters = arrayOf(android.text.InputFilter.LengthFilter(80))
         column.addView(line)
-        column.addView(View(this).apply {
-            setBackgroundColor(Color.parseColor(COLOR_LINE))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
-        })
-        column.addView(TextView(this).apply {
-            text = "Do it."
-            setTextColor(Color.parseColor("#6F6A62"))
-            textSize = 18f
-            setPadding(0, dp(14), 0, dp(8))
+        column.addView(rule())
+        column.addView(pill("Use “Do it.”").apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(12) }
             setOnClickListener {
                 line.setText("Do it.")
                 line.setSelection(line.text.length)
@@ -100,20 +99,20 @@ class SetupActivity : Activity() {
 
         setupBox = LinearLayout(this)
         setupBox.orientation = LinearLayout.VERTICAL
-        setupBox.setPadding(0, dp(12), 0, 0)
+        setupBox.setPadding(0, dp(18), 0, 0)
         column.addView(setupBox)
 
         understand = CheckBox(this)
         understand.text = "Other apps stay closed until the time ends. Calls still come in."
-        understand.setTextColor(Color.parseColor(COLOR_MUTED))
-        understand.textSize = 15f
+        understand.setTextColor(Color.parseColor(Ink.DIM))
+        understand.textSize = 14f
         understand.setPadding(0, dp(16), 0, dp(8))
         column.addView(understand)
 
         lockButton = Button(this)
         lockButton.text = "Lock in"
         lockButton.isAllCaps = false
-        lockButton.textSize = 18f
+        lockButton.textSize = 17f
         lockButton.setOnClickListener { startLock() }
         val lockParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -124,23 +123,13 @@ class SetupActivity : Activity() {
         column.addView(lockButton)
 
         column.addView(TextView(this).apply {
-            text = "Every day, or text a friend if I quit"
-            setTextColor(Color.parseColor(COLOR_FG))
-            textSize = 16f
+            text = "Schedule and accountability"
+            setTextColor(Color.parseColor(Ink.DIM))
+            textSize = 14f
             gravity = Gravity.CENTER
-            setPadding(0, dp(22), 0, dp(8))
+            setPadding(0, dp(24), 0, dp(8))
             setOnClickListener { openPlus(false) }
         })
-
-        column.addView(TextView(this).apply {
-            text = "Study"
-            setTextColor(Color.parseColor(COLOR_FG))
-            textSize = 15f
-            gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, dp(8))
-            setOnClickListener { startActivity(Intent(this@SetupActivity, StudyActivity::class.java)) }
-        })
-
 
         // Opened from the study workspace: start with the note's focus line and the chosen length.
         intent?.getStringExtra(EXTRA_LINE)?.let {
@@ -207,24 +196,24 @@ class SetupActivity : Activity() {
             val shape = GradientDrawable()
             shape.cornerRadius = dp(14).toFloat()
             if (on) {
-                shape.setColor(Color.parseColor(COLOR_PAPER))
-                button.setTextColor(Color.parseColor(COLOR_INK))
+                shape.setColor(Color.parseColor(Ink.TEXT))
+                button.setTextColor(Color.parseColor(Ink.BLACK))
             } else {
                 shape.setColor(Color.TRANSPARENT)
-                shape.setStroke(dp(1), Color.parseColor(COLOR_LINE))
-                button.setTextColor(Color.parseColor(COLOR_FG))
+                shape.setStroke(dp(1), Color.parseColor(Ink.HAIRLINE))
+                button.setTextColor(Color.parseColor(Ink.TEXT))
             }
             button.background = shape
+            button.setPadding(dp(18), dp(16), dp(18), dp(16))
             button.text = choiceLabel(preset) + if (preset.paid && !plus) "  ·  Plus" else ""
         }
-        val text = if (::line.isInitialized) line.text.toString().trim() else ""
         lockButton.text = if (selected.paid && !Pass.owns(this)) "Continue" else "Lock in"
         val fill = GradientDrawable()
-        fill.cornerRadius = dp(16).toFloat()
-        fill.setColor(Color.parseColor(COLOR_PAPER))
+        fill.cornerRadius = dp(50).toFloat()
+        fill.setColor(Color.parseColor(Ink.TEXT))
         lockButton.background = fill
-        lockButton.setTextColor(Color.parseColor(COLOR_INK))
-        lockButton.setPadding(dp(16), dp(18), dp(16), dp(18))
+        lockButton.setTextColor(Color.parseColor(Ink.BLACK))
+        lockButton.setPadding(dp(16), dp(16), dp(16), dp(16))
 
         val returning = SessionStore.setupDone(this)
         understand.visibility = if (returning) View.GONE else View.VISIBLE
@@ -233,7 +222,10 @@ class SetupActivity : Activity() {
 
     private fun buildSetup() {
         setupBox.removeAllViews()
+        setupBox.addView(caption("Permissions", Ink.FAINT).apply { setPadding(0, 0, 0, dp(10)) })
+        var needed = false
         if (!granted(Manifest.permission.CALL_PHONE)) {
+            needed = true
             setupBox.addView(setupButton("Allow calls") {
                 requestPermissions(
                     arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE),
@@ -242,16 +234,19 @@ class SetupActivity : Activity() {
             })
         }
         if (!granted(Manifest.permission.CAMERA)) {
+            needed = true
             setupBox.addView(setupButton("Allow camera and torch") {
                 requestPermissions(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO), 12)
             })
         }
         if (!Gate.accessibilityOn(this)) {
+            needed = true
             setupBox.addView(setupButton("Allow the lock") {
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             })
         }
         if (!Gate.adminOn(this)) {
+            needed = true
             setupBox.addView(setupButton("Block uninstall during a lock") {
                 startActivity(Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
                     putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, Gate.adminComponent(this@SetupActivity))
@@ -261,6 +256,9 @@ class SetupActivity : Activity() {
                     )
                 })
             })
+        }
+        if (!needed) {
+            setupBox.addView(caption("All set", Ink.DIM).apply { setPadding(0, 0, 0, dp(4)) })
         }
     }
 
@@ -291,13 +289,14 @@ class SetupActivity : Activity() {
         return Button(this).apply {
             this.text = text
             isAllCaps = false
-            this.textSize = 16f
-            setTextColor(Color.parseColor(COLOR_FG))
+            this.textSize = 15f
+            setTextColor(Color.parseColor(Ink.TEXT))
             val shape = GradientDrawable()
-            shape.cornerRadius = dp(12).toFloat()
-            shape.setStroke(dp(1), Color.parseColor(COLOR_LINE))
+            shape.cornerRadius = dp(50).toFloat()
+            shape.setStroke(dp(1), Color.parseColor(Ink.HAIRLINE))
             shape.setColor(Color.TRANSPARENT)
             background = shape
+            setPadding(dp(16), dp(14), dp(16), dp(14))
             setOnClickListener { onClick() }
             val params = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,

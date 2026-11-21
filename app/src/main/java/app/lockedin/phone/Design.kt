@@ -71,3 +71,47 @@ fun Context.pill(label: String, filled: Boolean = false): TextView = TextView(th
     }
     isClickable = true
 }
+
+/** The three places the app moves between. The bar is the same on every top-level screen. */
+enum class Tab(val label: String) { HOME("Home"), STUDY("Study"), FOCUS("Focus") }
+
+/** A hairline rule over three equal labels. The current tab is white, the others are faint. */
+fun Context.tabBar(current: Tab): LinearLayout = LinearLayout(this).apply {
+    orientation = LinearLayout.VERTICAL
+    addView(rule())
+    val row = LinearLayout(this@tabBar).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER
+        setPadding(0, dp(4), 0, dp(4))
+    }
+    Tab.entries.forEach { tab ->
+        row.addView(TextView(this@tabBar).apply {
+            text = tab.label.uppercase()
+            typeface = Typeface.MONOSPACE
+            textSize = 12f
+            letterSpacing = 0.18f
+            gravity = Gravity.CENTER
+            setPadding(0, dp(16), 0, dp(16))
+            setTextColor(Color.parseColor(if (tab == current) Ink.TEXT else Ink.FAINT))
+            isClickable = true
+            contentDescription = tab.label
+            setOnClickListener { if (tab != current) openTab(tab) }
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+    }
+    addView(row, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+}
+
+/** Moves to a top-level screen without stacking copies of it. */
+fun Context.openTab(tab: Tab) {
+    val target = when (tab) {
+        Tab.HOME -> HomeActivity::class.java
+        Tab.STUDY -> StudyActivity::class.java
+        Tab.FOCUS -> SetupActivity::class.java
+    }
+    startActivity(
+        android.content.Intent(this, target)
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+    )
+    if (this is android.app.Activity) overridePendingTransition(0, 0)
+}

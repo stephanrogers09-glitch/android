@@ -48,6 +48,7 @@ import java.util.concurrent.Executors
 class StudyActivity : Activity() {
     // Library
     private lateinit var library: ScrollView
+    private lateinit var libraryTabs: LinearLayout
     private lateinit var metaText: TextView
     private lateinit var sortRow: LinearLayout
     private lateinit var resumeHolder: LinearLayout
@@ -165,12 +166,15 @@ class StudyActivity : Activity() {
         column.addView(noteList.also { it.fillWidth() })
 
         root.addView(library, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        libraryTabs = tabBar(Tab.STUDY)
+        root.addView(libraryTabs)
     }
 
     private fun showLibrary() {
         openId = null
         workspace.visibility = View.GONE
         library.visibility = View.VISIBLE
+        libraryTabs.visibility = View.VISIBLE
         val now = System.currentTimeMillis()
         val notes = if (sortByTitle) book.sortedByTitle() else book.sorted()
 
@@ -404,6 +408,7 @@ class StudyActivity : Activity() {
         answerText.text = if (lastAnswerNoteId == id) lastAnswer else ""
         answerScroll.visibility = if (answerText.text.isNotEmpty()) View.VISIBLE else View.GONE
         library.visibility = View.GONE
+        libraryTabs.visibility = View.GONE
         workspace.visibility = View.VISIBLE
         updateContextTag()
         refreshTutor()
