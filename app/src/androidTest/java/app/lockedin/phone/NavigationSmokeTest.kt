@@ -150,4 +150,16 @@ class NavigationSmokeTest {
         instrumentation.waitForIdleSync()
         SessionStore.clear(context)
     }
+
+    @Test
+    fun theDeviceKeyboardIsAllowedSoTypingDoesNotLeaveLockedIn() {
+        SessionStore.start(context, Preset.M25, "Study", System.currentTimeMillis())
+        val keyboard = android.provider.Settings.Secure.getString(
+            context.contentResolver,
+            android.provider.Settings.Secure.DEFAULT_INPUT_METHOD
+        )?.substringBefore('/')
+        if (keyboard != null) assertTrue("the default keyboard must be allowed", Allow.isAllowed(context, keyboard))
+        assertFalse(Allow.isAllowed(context, "com.example.not.installed.social"))
+        SessionStore.clear(context)
+    }
 }
