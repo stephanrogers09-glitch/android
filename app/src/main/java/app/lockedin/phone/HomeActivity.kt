@@ -5,11 +5,12 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
-import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import app.lockedin.core.focus.FocusClock
+import app.lockedin.core.study.StudyTime
 
 /**
  * The launcher. Shows only real state: the next scheduled session, the last note, and whether the lock
