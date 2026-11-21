@@ -18,6 +18,12 @@ private fun expect(name: String, expected: Boolean, actual: Boolean) {
 }
 
 fun main() {
+    // The keyboard the student is typing with is allowed, so typing in a note does not bounce the lock.
+    expect("default keyboard allowed", true, AllowRules.isAllowed("com.google.android.inputmethod.latin", null, false, defaultInputMethod = "com.google.android.inputmethod.latin"))
+    expect("other keyboard not allowed", false, AllowRules.isAllowed("com.example.keyboard", null, false, defaultInputMethod = "com.google.android.inputmethod.latin"))
+    expect("keyboard rule needs a default", false, AllowRules.isAllowed("com.google.android.inputmethod.latin", null, false))
+    expect("social app still blocked with a keyboard set", false, AllowRules.isAllowed("com.example.social", null, false, defaultInputMethod = "com.google.android.inputmethod.latin"))
+
     // System phone stack and LockedIn itself are always allowed.
     expect("self allowed", true, AllowRules.isAllowed("app.lockedin.phone", null, false))
     expect("systemui allowed", true, AllowRules.isAllowed("com.android.systemui", null, false))

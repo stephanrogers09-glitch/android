@@ -9,6 +9,8 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
@@ -19,6 +21,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import app.lockedin.core.study.CommitmentSuggestions
 
 /** The Focus tab: choose a length, write the commitment, grant the lock, and start. */
 class SetupActivity : Activity() {
@@ -29,6 +32,19 @@ class SetupActivity : Activity() {
     private val choices = linkedMapOf<Preset, Button>()
     private var selected = Preset.M25
     private var studyNoteId: String? = null
+    private lateinit var suggestion: TextView
+    private var rotation = 0
+    private val handler = Handler(Looper.getMainLooper())
+    private val rotate = object : Runnable {
+        override fun run() {
+            rotation++
+            suggestion.animate().alpha(0f).setDuration(300).withEndAction {
+                suggestion.text = CommitmentSuggestions.at(rotation)
+                suggestion.animate().alpha(1f).setDuration(300).start()
+            }.start()
+            handler.postDelayed(this, ROTATE_MS)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -83,16 +99,29 @@ class SetupActivity : Activity() {
         line.filters = arrayOf(android.text.InputFilter.LengthFilter(80))
         column.addView(line)
         column.addView(rule())
-        column.addView(pill("Use “Do it.”").apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(12) }
+        // Rotating commitment suggestions. Tapping one fills the commitment; typing a custom one still works.
+        suggestion = TextView(this).apply {
+            text = CommitmentSuggestions.at(rotation)
+            setTextColor(Color.parseColor(Ink.DIM))
+            textSize = 16f
+            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+            setLineSpacing(dp(3).toFloat(), 1f)
+            isClickable = true
             setOnClickListener {
-                line.setText("Do it.")
+                line.setText(text)
                 line.setSelection(line.text.length)
             }
-        })
+        }
+        column.addView(
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = surface(Ink.RAISED, 16, Ink.HAIRLINE)
+                setPadding(dp(18), dp(16), dp(18), dp(16))
+                addView(suggestion)
+            },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                .apply { topMargin = dp(14) }
+        )
 
         setupBox = LinearLayout(this)
         setupBox.orientation = LinearLayout.VERTICAL
@@ -137,6 +166,7 @@ class SetupActivity : Activity() {
         const val EXTRA_LINE = "app.lockedin.phone.LINE"
         const val EXTRA_NOTE = "app.lockedin.phone.NOTE"
         const val EXTRA_AUTOSTART = "app.lockedin.phone.AUTOSTART"
+        private const val ROTATE_MS = 4000L
     }
 
     // The screen is single-task, so a later request from the study workspace arrives here.
@@ -169,6 +199,13 @@ class SetupActivity : Activity() {
             return
         }
         paint()
+        handler.removeCallbacks(rotate)
+        handler.postDelayed(rotate, ROTATE_MS)
+    }
+
+    override fun onPause() {
+        handler.removeCallbacks(rotate)
+        super.onPause()
     }
 
     override fun onRequestPermissionsResult(

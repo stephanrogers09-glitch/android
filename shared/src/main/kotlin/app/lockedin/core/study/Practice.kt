@@ -7,13 +7,8 @@ package app.lockedin.core.study
 object ClozePractice {
     data class Question(val sentence: String, val prompt: String, val answer: String)
 
-    private val stopWords = setOf(
-        "about", "after", "again", "against", "because", "before", "being", "between", "could",
-        "during", "other", "should", "their", "there", "these", "those", "through", "where", "which",
-        "while", "without", "would",
-    )
     private val sentenceEnd = Regex("(?<=[.!?])\\s+|\\n+")
-    private val wordRun = Regex("[A-Za-z]{5,}")
+    private val wordRun = StudyWords.content
     private val blank = "_____"
 
     /** Up to [limit] questions from the note's full sentences, in the order they are written. */
@@ -26,7 +21,7 @@ object ClozePractice {
             val words = sentence.split(Regex("\\s+")).size
             if (words !in 6..30) continue
             val target = wordRun.findAll(sentence).map { it.value }
-                .filter { it.lowercase() !in stopWords }
+                .filter { it.lowercase() !in StudyWords.stop }
                 .maxByOrNull { it.length } ?: continue
             val match = Regex("\\b${Regex.escape(target)}\\b").find(sentence) ?: continue
             out.add(Question(sentence, sentence.replaceRange(match.range, blank), target))

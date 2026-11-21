@@ -11,7 +11,16 @@ object Allow {
             defaultDialer = defaultDialer(context),
             permittedByUser = SessionStore.isPermitted(context, packageName),
             isSystemApp = isSystemApp(context, packageName),
+            defaultInputMethod = defaultInputMethod(context),
         )
+    }
+
+    /** The package of the keyboard the phone is using now, or null if it cannot be read. */
+    private fun defaultInputMethod(context: Context): String? {
+        return android.provider.Settings.Secure
+            .getString(context.contentResolver, android.provider.Settings.Secure.DEFAULT_INPUT_METHOD)
+            ?.substringBefore('/')
+            ?.takeIf { it.isNotBlank() }
     }
 
     /** The package the system has set as the default phone app, or null if unknown. */

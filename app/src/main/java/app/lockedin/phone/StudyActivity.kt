@@ -30,6 +30,7 @@ import app.lockedin.core.study.StudyAction
 import app.lockedin.core.study.StudyContext
 import app.lockedin.core.study.StudyContextCodec
 import app.lockedin.core.study.ClozePractice
+import app.lockedin.core.study.KeyTerms
 import app.lockedin.core.study.StudyFocus
 import app.lockedin.core.study.StudyMaterial
 import app.lockedin.core.study.StudyPrompts
@@ -419,7 +420,12 @@ class StudyActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
                 .apply { rightMargin = dp(8) }
         }
-        actionPills = actionPills + practise
+        val keyTerms = pill("Key terms").apply {
+            setOnClickListener { showKeyTerms() }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                .apply { rightMargin = dp(8) }
+        }
+        actionPills = actionPills + practise + keyTerms
         actionPills.forEach { chipRow.addView(it) }
         chips.addView(chipRow)
         readyBox.addView(chips.also { it.fillWidth() }.apply { setPadding(0, 0, 0, dp(12)) })
@@ -566,6 +572,16 @@ class StudyActivity : Activity() {
         answerText.text = (if (right) "Correct." else "Not quite. The word is ${current.answer}.") +
             "\n\n" + current.sentence + "\n\nPress ↑ for the next one."
         question.setText("")
+    }
+
+    /** The words this note repeats most. Counted on the device; no AI call. */
+    private fun showKeyTerms() {
+        endPractice()
+        val note = openId?.let { book.find(it) } ?: return
+        val terms = KeyTerms.top(note.body)
+        answerText.text = if (terms.isEmpty()) "No repeated terms yet." else
+            terms.joinToString("\n") { "${it.word}   ${it.count}" }
+        answerScroll.visibility = View.VISIBLE
     }
 
     private fun finishPractice() {

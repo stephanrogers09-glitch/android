@@ -18,18 +18,22 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.window.OnBackInvokedDispatcher
 
+/**
+ * The lock screen, in the original LockedIn character: a large clock, the state, when it ends, the
+ * commitment, and three quiet controls. Nothing explains the lock; the symbols do that.
+ */
 class LockActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private var released = false
     private var openingChild = false
     private lateinit var root: FrameLayout
-    private lateinit var activeRow: LinearLayout
-    private lateinit var title: TextView
-    private lateinit var rule: View
+    private lateinit var clock: TextView
+    private lateinit var label: TextView
+    private lateinit var until: TextView
     private lateinit var sentence: TextView
-    private lateinit var status: TextView
     private lateinit var route: TextView
     private lateinit var actions: LinearLayout
+    private lateinit var lockBroken: TextView
     private lateinit var callButton: ImageButton
     private lateinit var cameraButton: ImageButton
     private lateinit var lightButton: ImageButton
@@ -55,7 +59,7 @@ class LockActivity : Activity() {
         val column = LinearLayout(this)
         column.orientation = LinearLayout.VERTICAL
         column.gravity = Gravity.CENTER_HORIZONTAL
-        column.setPadding(dp(24), dp(56), dp(24), dp(36))
+        column.setPadding(dp(24), dp(48), dp(24), dp(36))
         root.addView(
             column,
             FrameLayout.LayoutParams(
@@ -66,57 +70,49 @@ class LockActivity : Activity() {
 
         column.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f))
 
-        // The active state: a quiet indicator, the state, the commitment, then the way back to work.
-        activeRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(
-                View(context).apply {
-                    background = GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL
-                        setColor(Color.parseColor(Ink.GLOW))
-                    }
-                },
-                LinearLayout.LayoutParams(dp(6), dp(6))
-            )
-            addView(caption("Focus active", Ink.DIM).apply { setPadding(dp(10), 0, 0, 0) })
-        }
-        column.addView(activeRow)
-
-        title = TextView(this).apply {
+        clock = TextView(this).apply {
             gravity = Gravity.CENTER
-            textSize = 44f
-            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+            textSize = 96f
+            typeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
+        }
+        column.addView(clock)
+
+        label = TextView(this).apply {
+            gravity = Gravity.CENTER
+            textSize = 13f
+            letterSpacing = 0.42f
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
             setPadding(0, dp(18), 0, 0)
         }
-        column.addView(title)
+        column.addView(label)
 
-        rule = View(this)
-        column.addView(rule, LinearLayout.LayoutParams(dp(56), dp(1)).apply { topMargin = dp(28) })
+        until = TextView(this).apply {
+            gravity = Gravity.CENTER
+            textSize = 17f
+            typeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
+            setPadding(0, dp(8), 0, 0)
+        }
+        column.addView(until)
+
+        column.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f))
 
         sentence = TextView(this).apply {
             gravity = Gravity.CENTER
-            textSize = 22f
-            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+            textSize = 30f
+            typeface = Typeface.create("sans-serif-condensed", Typeface.NORMAL)
             setLineSpacing(dp(4).toFloat(), 1f)
-            setPadding(dp(12), dp(28), dp(12), 0)
+            setPadding(dp(16), 0, dp(16), 0)
         }
         column.addView(sentence, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         column.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f))
 
-        status = TextView(this).apply {
+        route = TextView(this).apply {
             gravity = Gravity.CENTER
-            typeface = Typeface.MONOSPACE
-            letterSpacing = 0.14f
-            textSize = 11f
-            setPadding(0, 0, 0, dp(24))
-        }
-        column.addView(status)
-
-        route = pill("Back to your note", filled = true).apply {
-            textSize = 15f
-            setPadding(dp(28), dp(14), dp(28), dp(14))
+            textSize = 14f
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            setPadding(dp(22), dp(12), dp(22), dp(12))
+            isClickable = true
             setOnClickListener { openStudy() }
         }
         column.addView(route, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -144,13 +140,26 @@ class LockActivity : Activity() {
         actions.addView(cameraButton)
         actions.addView(lightButton)
         column.addView(actions, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(28)
+            topMargin = dp(26)
         })
 
-        // The completed state: the words, and Done.
-        doneButton = pill("Done", filled = true).apply {
-            textSize = 16f
-            setPadding(dp(56), dp(16), dp(56), dp(16))
+        // Shown only if the lock itself is not running. Otherwise the screen says nothing about it.
+        lockBroken = TextView(this).apply {
+            gravity = Gravity.CENTER
+            textSize = 12f
+            letterSpacing = 0.1f
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            text = "Lock is off. Open Focus to turn it on."
+            setPadding(0, dp(14), 0, 0)
+            visibility = View.GONE
+        }
+        column.addView(lockBroken)
+
+        column.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f))
+
+        doneButton = pill("Done").apply {
+            textSize = 15f
+            setPadding(dp(56), dp(14), dp(56), dp(14))
             setOnClickListener {
                 SessionStore.clear(this@LockActivity)
                 startActivity(
@@ -212,26 +221,25 @@ class LockActivity : Activity() {
         val active = SessionStore.isActive(this, now)
         released = !active
         paint()
+        clock.text = formatClock(now)
         if (active) {
-            activeRow.visibility = View.VISIBLE
-            title.text = "Locked in"
-            rule.visibility = View.VISIBLE
+            label.text = "LOCKED IN"
+            until.text = "until ${formatBackAt(SessionStore.endAt(this))}"
+            until.visibility = View.VISIBLE
             sentence.text = SessionStore.line(this)
             sentence.visibility = View.VISIBLE
-            status.text = if (Gate.accessibilityOn(this)) "LOCK ON  ·  CALLS OPEN" else "LOCK OFF  ·  CHECK SETUP IN FOCUS"
-            status.visibility = View.VISIBLE
             route.text = if (StudyFocusLog.activeNoteId(this) != null) "Back to your note" else "Open notes"
             route.visibility = View.VISIBLE
             actions.visibility = View.VISIBLE
+            lockBroken.visibility = if (Gate.accessibilityOn(this)) View.GONE else View.VISIBLE
             doneButton.visibility = View.GONE
         } else {
-            activeRow.visibility = View.GONE
-            title.text = "Session complete"
-            rule.visibility = View.VISIBLE
+            label.text = "SESSION COMPLETE"
+            until.visibility = View.GONE
             sentence.visibility = View.GONE
-            status.visibility = View.GONE
             route.visibility = View.GONE
             actions.visibility = View.GONE
+            lockBroken.visibility = View.GONE
             doneButton.visibility = View.VISIBLE
             Torch.off(this)
             paintLight()
@@ -240,19 +248,24 @@ class LockActivity : Activity() {
 
     private fun paint() {
         root.setBackgroundColor(Color.parseColor(Ink.BLACK))
-        title.setTextColor(Color.parseColor(Ink.TEXT))
-        rule.setBackgroundColor(Color.parseColor(Ink.HAIRLINE))
-        sentence.setTextColor(Color.parseColor(Ink.TEXT))
-        status.setTextColor(Color.parseColor(Ink.FAINT))
+        clock.setTextColor(Color.parseColor(Ink.PAPER))
+        label.setTextColor(Color.parseColor(Ink.PAPER))
+        until.setTextColor(Color.parseColor(Ink.MUTED))
+        sentence.setTextColor(Color.parseColor(Ink.PAPER))
+        route.setTextColor(Color.parseColor(Ink.PAPER))
+        route.background = surface(Ink.BLACK, 50, Ink.RING)
+        lockBroken.setTextColor(Color.parseColor(Ink.MUTED))
+        doneButton.background = surface(Ink.BLACK, 50, Ink.RING)
+        doneButton.setTextColor(Color.parseColor(Ink.PAPER))
         paintLight()
     }
 
     private fun paintLight() {
         val on = Torch.isOn()
-        val ink = Color.parseColor(if (on) "#F3E2B8" else Ink.TEXT)
+        val ink = Color.parseColor(if (on) "#F3E2B8" else Ink.PAPER)
         lightButton.setColorFilter(ink)
         val disk = lightButton.background as GradientDrawable
-        disk.setStroke(dp(1), Color.parseColor(if (on) "#F3E2B8" else Ink.HAIRLINE))
+        disk.setStroke(dp(1), Color.parseColor(if (on) "#F3E2B8" else Ink.RING))
         disk.setColor(if (on) Color.parseColor("#22F3E2B8") else Color.TRANSPARENT)
     }
 
@@ -262,13 +275,13 @@ class LockActivity : Activity() {
         button.contentDescription = name
         button.scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
         button.setPadding(dp(16), dp(16), dp(16), dp(16))
-        button.setColorFilter(Color.parseColor(Ink.TEXT))
+        button.setColorFilter(Color.parseColor(Ink.PAPER))
         val disk = GradientDrawable()
         disk.shape = GradientDrawable.OVAL
         disk.setColor(Color.TRANSPARENT)
-        disk.setStroke(dp(1), Color.parseColor(Ink.HAIRLINE))
+        disk.setStroke(dp(1), Color.parseColor(Ink.RING))
         button.background = disk
-        val params = LinearLayout.LayoutParams(dp(68), dp(68))
+        val params = LinearLayout.LayoutParams(dp(72), dp(72))
         params.marginStart = dp(16)
         params.marginEnd = dp(16)
         button.layoutParams = params

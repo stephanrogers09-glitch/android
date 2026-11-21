@@ -42,12 +42,15 @@ object AllowRules {
         defaultDialer: String?,
         permittedByUser: Boolean,
         isSystemApp: Boolean = false,
+        defaultInputMethod: String? = null,
     ): Boolean {
         if (packageName in alwaysAllowed) return true
         val name = packageName.lowercase()
         if (blockedNameParts.any { name.contains(it) }) return false
         if (permittedByUser) return true
         if (defaultDialer != null && packageName == defaultDialer) return true
+        // The keyboard the student chose is part of typing, not a separate app. Only that one package is allowed.
+        if (defaultInputMethod != null && packageName == defaultInputMethod) return true
         if (packageName in knownCallPackages) return true
         return isSystemApp && systemCallNameParts.any { name.contains(it) }
     }

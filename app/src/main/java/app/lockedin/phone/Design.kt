@@ -21,6 +21,10 @@ object Ink {
     const val DIM = "#8C8C96"
     const val FAINT = "#4B4B55"
     const val GLOW = "#B9D4FF"
+    /** The lock screen's warm white and its quiet grey, from the original design. */
+    const val PAPER = "#EDE9E1"
+    const val MUTED = "#8A857C"
+    const val RING = "#2C2C2C"
 }
 
 /** A 1 dp rule across the full width. */
