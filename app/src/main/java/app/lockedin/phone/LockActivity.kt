@@ -23,9 +23,12 @@ class LockActivity : Activity() {
     private var released = false
     private var openingChild = false
     private lateinit var root: FrameLayout
+    private lateinit var activeRow: LinearLayout
     private lateinit var title: TextView
+    private lateinit var rule: View
     private lateinit var sentence: TextView
     private lateinit var status: TextView
+    private lateinit var route: TextView
     private lateinit var actions: LinearLayout
     private lateinit var callButton: ImageButton
     private lateinit var cameraButton: ImageButton
@@ -61,29 +64,62 @@ class LockActivity : Activity() {
             )
         )
 
-        // Quiet by design: the state, the commitment and the lock status. No timer is shown.
-        title = TextView(this)
-        title.gravity = Gravity.CENTER
-        title.textSize = 40f
-        title.typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
         column.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f))
+
+        // The active state: a quiet indicator, the state, the commitment, then the way back to work.
+        activeRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(
+                View(context).apply {
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(Color.parseColor(Ink.GLOW))
+                    }
+                },
+                LinearLayout.LayoutParams(dp(6), dp(6))
+            )
+            addView(caption("Focus active", Ink.DIM).apply { setPadding(dp(10), 0, 0, 0) })
+        }
+        column.addView(activeRow)
+
+        title = TextView(this).apply {
+            gravity = Gravity.CENTER
+            textSize = 44f
+            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+            setPadding(0, dp(18), 0, 0)
+        }
         column.addView(title)
 
-        sentence = TextView(this)
-        sentence.gravity = Gravity.CENTER
-        sentence.textSize = 20f
-        sentence.typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
-        sentence.setLineSpacing(dp(4).toFloat(), 1f)
-        sentence.setPadding(dp(12), dp(20), dp(12), 0)
+        rule = View(this)
+        column.addView(rule, LinearLayout.LayoutParams(dp(56), dp(1)).apply { topMargin = dp(28) })
+
+        sentence = TextView(this).apply {
+            gravity = Gravity.CENTER
+            textSize = 22f
+            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+            setLineSpacing(dp(4).toFloat(), 1f)
+            setPadding(dp(12), dp(28), dp(12), 0)
+        }
         column.addView(sentence, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
-        status = TextView(this)
-        status.gravity = Gravity.CENTER
-        status.typeface = Typeface.MONOSPACE
-        status.letterSpacing = 0.14f
-        status.textSize = 11f
-        status.setPadding(0, dp(18), 0, dp(28))
+        column.addView(View(this), LinearLayout.LayoutParams(0, 0, 1f))
+
+        status = TextView(this).apply {
+            gravity = Gravity.CENTER
+            typeface = Typeface.MONOSPACE
+            letterSpacing = 0.14f
+            textSize = 11f
+            setPadding(0, 0, 0, dp(24))
+        }
         column.addView(status)
+
+        route = pill("Back to your note", filled = true).apply {
+            textSize = 15f
+            setPadding(dp(28), dp(14), dp(28), dp(14))
+            setOnClickListener { openStudy() }
+        }
+        column.addView(route, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         actions = LinearLayout(this)
         actions.orientation = LinearLayout.HORIZONTAL
@@ -107,8 +143,11 @@ class LockActivity : Activity() {
         actions.addView(callButton)
         actions.addView(cameraButton)
         actions.addView(lightButton)
-        column.addView(actions)
+        column.addView(actions, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(28)
+        })
 
+        // The completed state: the words, and Done.
         doneButton = pill("Done", filled = true).apply {
             textSize = 16f
             setPadding(dp(56), dp(16), dp(56), dp(16))
@@ -120,10 +159,7 @@ class LockActivity : Activity() {
                 finish()
             }
         }
-        column.addView(doneButton, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ))
+        column.addView(doneButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         setContentView(root)
         render()
@@ -162,22 +198,39 @@ class LockActivity : Activity() {
     override fun onBackPressed() {
     }
 
+    /** Study is inside LockedIn, so it is an allowed screen. The flag stops the leave-hint relaunch for this step. */
+    private fun openStudy() {
+        openingChild = true
+        startActivity(
+            Intent(this, StudyActivity::class.java)
+                .putExtra(StudyFocusLog.EXTRA_NOTE_ID, StudyFocusLog.activeNoteId(this))
+        )
+    }
+
     private fun render() {
         val now = System.currentTimeMillis()
         val active = SessionStore.isActive(this, now)
         released = !active
         paint()
         if (active) {
+            activeRow.visibility = View.VISIBLE
             title.text = "Locked in"
+            rule.visibility = View.VISIBLE
             sentence.text = SessionStore.line(this)
+            sentence.visibility = View.VISIBLE
             status.text = if (Gate.accessibilityOn(this)) "LOCK ON  ·  CALLS OPEN" else "LOCK OFF  ·  CHECK SETUP IN FOCUS"
             status.visibility = View.VISIBLE
+            route.text = if (StudyFocusLog.activeNoteId(this) != null) "Back to your note" else "Open notes"
+            route.visibility = View.VISIBLE
             actions.visibility = View.VISIBLE
             doneButton.visibility = View.GONE
         } else {
+            activeRow.visibility = View.GONE
             title.text = "Session complete"
-            sentence.text = ""
+            rule.visibility = View.VISIBLE
+            sentence.visibility = View.GONE
             status.visibility = View.GONE
+            route.visibility = View.GONE
             actions.visibility = View.GONE
             doneButton.visibility = View.VISIBLE
             Torch.off(this)
@@ -188,6 +241,7 @@ class LockActivity : Activity() {
     private fun paint() {
         root.setBackgroundColor(Color.parseColor(Ink.BLACK))
         title.setTextColor(Color.parseColor(Ink.TEXT))
+        rule.setBackgroundColor(Color.parseColor(Ink.HAIRLINE))
         sentence.setTextColor(Color.parseColor(Ink.TEXT))
         status.setTextColor(Color.parseColor(Ink.FAINT))
         paintLight()

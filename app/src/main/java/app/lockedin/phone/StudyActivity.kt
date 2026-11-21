@@ -29,6 +29,7 @@ import app.lockedin.core.notes.NoteRules
 import app.lockedin.core.study.StudyAction
 import app.lockedin.core.study.StudyContext
 import app.lockedin.core.study.StudyContextCodec
+import app.lockedin.core.study.ClozePractice
 import app.lockedin.core.study.StudyFocus
 import app.lockedin.core.study.StudyMaterial
 import app.lockedin.core.study.StudyPrompts
@@ -88,6 +89,14 @@ class StudyActivity : Activity() {
     private var suppressSave = false
     private var tutorGeneration = 0
     private var libraryReady = false
+    private var resumeNoteId: String? = null
+    private var practice: List<ClozePractice.Question> = emptyList()
+    private var practiceIndex = 0
+    private var practiceCorrect = 0
+    private var practiceAwaitingNext = false
+    private var practising = false
+    private val practiceMissed = ArrayList<ClozePractice.Question>()
+    private val focusControls = ArrayList<View>()
     private var lastAnswerNoteId: String? = null
     private var lastAnswer = ""
 
@@ -101,6 +110,7 @@ class StudyActivity : Activity() {
         buildLibrary(root)
         buildWorkspace(root)
         setContentView(root)
+        resumeNoteId = intent?.getStringExtra(StudyFocusLog.EXTRA_NOTE_ID)
 
         // The notes file and the saved workspace state are read in the background.
         io.execute {
@@ -110,7 +120,7 @@ class StudyActivity : Activity() {
                 book = loaded
                 draftFrom(context)
                 libraryReady = true
-                showLibrary()
+                openResumed()
             }
         }
     }
@@ -176,6 +186,34 @@ class StudyActivity : Activity() {
         super.onResume()
         // A focus session started from here may have finished while the app was away.
         if (libraryReady && openId == null) showLibrary()
+        updateFocusControls()
+    }
+
+    // Single-task: the lock screen's route comes back to this instance with a note id.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (!libraryReady) return
+        val id = intent.getStringExtra(StudyFocusLog.EXTRA_NOTE_ID)?.takeIf { book.find(it) != null }
+        if (id != null) {
+            if (openId != null) saveNow()
+            openNote(id)
+        } else if (openId == null) {
+            showLibrary()
+        }
+    }
+
+    /** Opens the note a focus session was started from, or the library. */
+    private fun openResumed() {
+        val id = resumeNoteId?.takeIf { book.find(it) != null }
+        resumeNoteId = null
+        if (id != null) openNote(id) else showLibrary()
+    }
+
+    /** Focus controls are hidden while a session runs. */
+    private fun updateFocusControls() {
+        val running = SessionStore.isActive(this)
+        focusControls.forEach { it.visibility = if (running) View.GONE else View.VISIBLE }
     }
 
     private fun showLibrary() {
@@ -258,9 +296,13 @@ class StudyActivity : Activity() {
         }
         top.addView(pill("‹  Notes").apply { setOnClickListener { closeNote() } })
         top.addView(View(this), spacer())
-        top.addView(pill("2 min test").apply { setOnClickListener { startFocus(Preset.M2, autostart = true) } })
-        top.addView(View(this), LinearLayout.LayoutParams(dp(8), 0))
-        top.addView(pill("Focus · 25 min").apply { setOnClickListener { startFocus(Preset.M25, autostart = false) } })
+        val twoMinute = pill("2 min test").apply { setOnClickListener { startFocus(Preset.M2, autostart = true) } }
+        val gap = View(this)
+        val twentyFive = pill("Focus · 25 min").apply { setOnClickListener { startFocus(Preset.M25, autostart = false) } }
+        focusControls.addAll(listOf(twoMinute, gap, twentyFive))
+        top.addView(twoMinute)
+        top.addView(gap, LinearLayout.LayoutParams(dp(8), 0))
+        top.addView(twentyFive)
         workspace.addView(top.also { it.fillWidth() })
         workspace.addView(rule())
 
@@ -372,6 +414,12 @@ class StudyActivity : Activity() {
                     .apply { rightMargin = dp(8) }
             }
         }
+        val practise = pill("Practise").apply {
+            setOnClickListener { startPractice() }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                .apply { rightMargin = dp(8) }
+        }
+        actionPills = actionPills + practise
         actionPills.forEach { chipRow.addView(it) }
         chips.addView(chipRow)
         readyBox.addView(chips.also { it.fillWidth() }.apply { setPadding(0, 0, 0, dp(12)) })
@@ -401,7 +449,7 @@ class StudyActivity : Activity() {
             setTextColor(Color.parseColor(Ink.BLACK))
             background = surface(Ink.TEXT, 50)
             isClickable = true
-            setOnClickListener { askQuestion() }
+            setOnClickListener { if (practising) submitPractice() else askQuestion() }
         }
         inputBar.addView(sendButton, LinearLayout.LayoutParams(dp(40), dp(40)))
         readyBox.addView(inputBar.also { it.fillWidth() })
@@ -424,7 +472,9 @@ class StudyActivity : Activity() {
         library.visibility = View.GONE
         libraryTabs.visibility = View.GONE
         workspace.visibility = View.VISIBLE
+        endPractice()
         updateContextTag()
+        updateFocusControls()
         refreshTutor()
         persist()
     }
@@ -461,6 +511,7 @@ class StudyActivity : Activity() {
     /** Starts focus for the open note. The 2-minute test starts at once when the lock is already ready. */
     private fun startFocus(preset: Preset, autostart: Boolean) {
         saveNow()
+        if (SessionStore.isActive(this)) return
         val note = openId?.let { book.find(it) } ?: return
         startActivity(
             Intent(this, SetupActivity::class.java)
@@ -471,8 +522,70 @@ class StudyActivity : Activity() {
         )
     }
 
+    // --- Practise: recall from the note's own sentences, no AI call -----------------------------
+
+    private fun startPractice() {
+        val note = openId?.let { book.find(it) } ?: return
+        val questions = ClozePractice.questions(note.body)
+        if (questions.isEmpty()) {
+            answerText.text = "Write a few full sentences in this note to practise."
+            answerScroll.visibility = View.VISIBLE
+            return
+        }
+        practice = questions
+        practiceIndex = 0
+        practiceCorrect = 0
+        practiceMissed.clear()
+        practiceAwaitingNext = false
+        practising = true
+        contextTag.text = "PRACTISE"
+        question.hint = "Your answer"
+        showPracticeQuestion()
+    }
+
+    private fun showPracticeQuestion() {
+        val current = practice[practiceIndex]
+        answerText.text = "${practiceIndex + 1} of ${practice.size}\n\n${current.prompt}"
+        answerScroll.visibility = View.VISIBLE
+        question.setText("")
+    }
+
+    private fun submitPractice() {
+        if (practiceAwaitingNext) {
+            practiceAwaitingNext = false
+            practiceIndex++
+            if (practiceIndex < practice.size) showPracticeQuestion() else finishPractice()
+            return
+        }
+        val typed = question.text.toString()
+        if (typed.isBlank()) return
+        val current = practice[practiceIndex]
+        val right = ClozePractice.correct(typed, current.answer)
+        if (right) practiceCorrect++ else practiceMissed.add(current)
+        practiceAwaitingNext = true
+        answerText.text = (if (right) "Correct." else "Not quite. The word is ${current.answer}.") +
+            "\n\n" + current.sentence + "\n\nPress ↑ for the next one."
+        question.setText("")
+    }
+
+    private fun finishPractice() {
+        val revisit = if (practiceMissed.isEmpty()) "" else
+            "\n\nRevisit:\n" + practiceMissed.joinToString("\n\n") { it.sentence }
+        answerText.text = "$practiceCorrect of ${practice.size} correct.$revisit"
+        endPractice()
+    }
+
+    private fun endPractice() {
+        if (!practising) return
+        practising = false
+        practiceAwaitingNext = false
+        question.hint = "Ask about this note"
+        updateContextTag()
+    }
+
     /** The context pill says what the tutor will read: the selection, or the whole note. */
     private fun updateContextTag() {
+        if (practising) return
         val selected = selectedText().length
         contextTag.text = if (selected > 0) "SELECTION · $selected" else "NOTE"
     }
@@ -510,6 +623,7 @@ class StudyActivity : Activity() {
     }
 
     private fun runAction(action: StudyAction) {
+        endPractice()
         updateContextTag()
         send(StudyPrompts.requestFor(action, currentMaterial()))
     }

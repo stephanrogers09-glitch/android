@@ -181,6 +181,11 @@ class SetupActivity : Activity() {
     }
 
     private fun startLock() {
+        // A running session is never replaced. Anything that asks for a new one goes to the lock.
+        if (SessionStore.isActive(this)) {
+            startActivity(Intent(this, LockActivity::class.java))
+            return
+        }
         val text = line.text.toString().trim().ifBlank { "Do it." }
         if (!ready()) {
             if (!SessionStore.setupDone(this) && !understand.isChecked) {
@@ -194,7 +199,10 @@ class SetupActivity : Activity() {
         }
         SessionStore.markSetup(this)
         SessionStore.start(this, selected, text)
-        studyNoteId?.let { StudyFocusLog.begin(this, it, selected.minutes ?: 0, SessionStore.endAt(this)) }
+        StudyFocusLog.settle(this)
+        val noteId = studyNoteId
+        if (noteId != null) StudyFocusLog.begin(this, noteId, selected.minutes ?: 0, SessionStore.endAt(this))
+        else StudyFocusLog.forget(this)
         startActivity(Intent(this, LockActivity::class.java))
     }
 

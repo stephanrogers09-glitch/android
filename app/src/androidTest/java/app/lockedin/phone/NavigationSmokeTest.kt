@@ -78,4 +78,76 @@ class NavigationSmokeTest {
         StudyFocusLog.settle(context, start + 240_000L)
         assertEquals(2, StudyFocusLog.minutes(context, "note-focus-test"))
     }
+
+    @Test
+    fun studyOpensFromTheLockWhileTheSessionKeepsRunning() {
+        val now = System.currentTimeMillis()
+        SessionStore.start(context, Preset.M25, "Study: Biology", now)
+        StudyFocusLog.begin(context, "note-during-session", 25, SessionStore.endAt(context))
+        val lock = instrumentation.startActivitySync(
+            Intent(context, LockActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+        instrumentation.waitForIdleSync()
+        assertEquals("note-during-session", StudyFocusLog.activeNoteId(context))
+
+        val study = instrumentation.startActivitySync(
+            Intent(context, StudyActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .putExtra(StudyFocusLog.EXTRA_NOTE_ID, "note-during-session")
+        )
+        instrumentation.waitForIdleSync()
+        assertFalse("study screen closed on open", study.isFinishing)
+        assertTrue("the session must keep running inside LockedIn", SessionStore.isActive(context))
+        assertTrue("LockedIn itself stays allowed", Allow.isAllowed(context, context.packageName))
+
+        study.finish()
+        lock.finish()
+        instrumentation.waitForIdleSync()
+    }
+
+    @Test
+    fun callsStayAllowedAndOtherAppsStayBlockedDuringASession() {
+        SessionStore.start(context, Preset.M25, "Study", System.currentTimeMillis())
+        assertTrue(Allow.isAllowed(context, "com.google.android.dialer"))
+        assertTrue(Allow.isAllowed(context, "com.android.incallui"))
+        assertTrue(Allow.isAllowed(context, "com.android.phone"))
+        assertFalse(Allow.isAllowed(context, "com.example.not.installed.social"))
+        assertFalse(Allow.isAllowed(context, "com.example.gallery.photos"))
+    }
+
+    @Test
+    fun aRunningSessionIsNeverReplacedFromFocusSetup() {
+        val now = System.currentTimeMillis()
+        SessionStore.start(context, Preset.M25, "Original", now)
+        val end = SessionStore.endAt(context)
+        instrumentation.startActivitySync(
+            Intent(context, SetupActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .putExtra(SetupActivity.EXTRA_PRESET, Preset.M2.id)
+                .putExtra(SetupActivity.EXTRA_AUTOSTART, true)
+        )
+        instrumentation.waitForIdleSync()
+        assertEquals(end, SessionStore.endAt(context))
+        assertEquals("Original", SessionStore.line(context))
+    }
+
+    @Test
+    fun aSessionFinishedAfterStudyCompletesAndIsCredited() {
+        val now = System.currentTimeMillis()
+        SessionStore.start(context, Preset.M2, "Study: Chemistry", now - 300_000L)
+        StudyFocusLog.begin(context, "note-complete", 2, SessionStore.endAt(context))
+        assertFalse(SessionStore.isActive(context))
+        assertNull(StudyFocusLog.activeNoteId(context))
+        StudyFocusLog.settle(context, now)
+        assertEquals(2, StudyFocusLog.minutes(context, "note-complete"))
+
+        val lock = instrumentation.startActivitySync(
+            Intent(context, LockActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+        instrumentation.waitForIdleSync()
+        assertFalse(lock.isFinishing)
+        lock.finish()
+        instrumentation.waitForIdleSync()
+        SessionStore.clear(context)
+    }
 }

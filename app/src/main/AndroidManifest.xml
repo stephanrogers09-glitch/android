@@ -58,6 +58,7 @@
         <activity
             android:name=".StudyActivity"
             android:exported="false"
+            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize" />
 
         <service
