@@ -20,7 +20,7 @@
         android:theme="@style/LockTheme">
 
         <activity
-            android:name=".SetupActivity"
+            android:name=".HomeActivity"
             android:exported="true"
             android:launchMode="singleTask">
             <intent-filter>
@@ -28,6 +28,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".SetupActivity"
+            android:exported="false"
+            android:launchMode="singleTask" />
 
         <activity
             android:name=".LockActivity"
@@ -47,6 +52,14 @@
         <activity
             android:name=".PlusActivity"
             android:exported="false" />
+
+
+
+        <activity
+            android:name=".StudyActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize" />
 
         <service
             android:name=".LockAccessibilityService"

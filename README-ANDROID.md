@@ -21,3 +21,23 @@ Emergency numbers 911, 112, and 999 open the real dialer. That is the way out of
 Sideload the APK and use it on your phone. The Play Store is a second step: a developer account costs $25 and review can take longer than a week. Do not wait on the store to start school.
 
 The website version does not do this job. Do not ship that as the lock.
+
+## Plus and redemption codes (behaviour change, 20 Nov 2026)
+
+- The public redemption codes were compromised and are removed from the app. They no longer work.
+- Passes stored by earlier app versions (`plusUntil`) are no longer honoured. They are deleted on first
+  use. This is a deliberate change: Plus features are off on every device until a server-side grant
+  exists.
+- Plus will be stored under `serverPlusUntil`, written only from a server-confirmed expiry
+  (`Pass.applyServerExpiry`). Server sync is not wired yet.
+- Known limit: code already shipped in installed APKs and in git history still contains the old codes.
+  Removing them from the source does not change old installs; that needs the server-side grant path.
+
+## AI study session (unverified build)
+
+- `StudyActivity` is the study workspace: notes, the editor, and the tutor, which sends one request to the `ai-assist` function through `AiClient`. The device holds
+  no Gemini key.
+- `AiClient.FUNCTION_URL` is blank until the Supabase project exists. Device sign-in does not exist yet,
+  so requests return "not signed in". The screen shows these states instead of fake answers.
+- `app/build.gradle.kts` compiles `shared/src/main/kotlin` into the app. The shared code has no Android
+  imports.

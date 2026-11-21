@@ -2,20 +2,41 @@ package app.lockedin.phone
 
 import android.app.KeyguardManager
 import android.content.Context
+import android.telecom.TelecomManager
 
 object Allow {
     fun isAllowed(context: Context, packageName: String): Boolean {
-        if (packageName == "app.lockedin.phone") return true
-        if (packageName == "com.android.systemui") return true
-        if (packageName == "com.android.phone") return true
-        if (packageName == "com.android.server.telecom") return true
-        val name = packageName.lowercase()
-        if (name.contains("photo") || name.contains("gallery") || name.contains("album")) return false
-        if (SessionStore.isPermitted(context, packageName)) return true
-        return name.contains("dialer") ||
-            name.contains("incall") ||
-            name.contains("telecom") ||
-            name.contains("emergency")
+        return AllowRules.isAllowed(
+            packageName = packageName,
+            defaultDialer = defaultDialer(context),
+            permittedByUser = SessionStore.isPermitted(context, packageName),
+            isSystemApp = isSystemApp(context, packageName),
+            defaultInputMethod = defaultInputMethod(context),
+        )
+    }
+
+    /** The package of the keyboard the phone is using now, or null if it cannot be read. */
+    private fun defaultInputMethod(context: Context): String? {
+        return android.provider.Settings.Secure
+            .getString(context.contentResolver, android.provider.Settings.Secure.DEFAULT_INPUT_METHOD)
+            ?.substringBefore('/')
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    /** The package the system has set as the default phone app, or null if unknown. */
+    private fun defaultDialer(context: Context): String? {
+        val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
+        return telecom?.defaultDialerPackage
+    }
+
+    /** True for apps preinstalled in the system image (OEM call screens), false for user-installed apps. */
+    private fun isSystemApp(context: Context, packageName: String): Boolean {
+        return try {
+            val info = context.packageManager.getApplicationInfo(packageName, 0)
+            (info.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+        } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+            false
+        }
     }
 
     fun isWhatsAppCall(packageName: String?, className: String?): Boolean {

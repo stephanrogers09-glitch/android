@@ -5,25 +5,37 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * Plus access on this device.
+ *
+ * The app cannot grant Plus to itself. Plus is granted on the server by an admin (backend
+ * migration `admin_grant_plus`, callable only with the service role). The device stores the
+ * expiry the server confirmed and checks it locally, so the Focus Engine keeps working offline
+ * until that expiry.
+ *
+ * The public redemption codes were compromised and are invalidated. Passes stored by earlier app
+ * versions (key `plusUntil`) are no longer read and are deleted on first use. This is a deliberate
+ * behaviour change: Plus features are off on every device until a server grant exists. Plus is
+ * stored under a new key that only `applyServerExpiry` writes.
+ */
 object Pass {
     private const val FILE = "locked-in-setup"
-    private const val UNTIL = "plusUntil"
-    private val month = setOf(
-        "7K2MQA", "4NP8LD", "M3C6VR", "H8T2YK", "Q1W5BN",
-        "D9F4XE", "R6A3UJ", "P2L7SC", "V5G8HM", "C4Y1KT"
-    )
-    private val year = setOf(
-        "9QH3WT", "2ZB6NF", "8ME5QA", "J7D1RP", "T3K9WL",
-        "F6N2YC", "A8S4HV", "W1B7GM", "E5R3QD", "L9C2XK",
-        "OWNER26"
-    )
+    private const val LEGACY_UNTIL = "plusUntil"   // written by the removed redemption codes
+    private const val UNTIL = "serverPlusUntil"    // written only from a server-confirmed expiry
 
     fun owns(context: Context, now: Long = System.currentTimeMillis()): Boolean {
+        removeLegacy(context)
         return until(context) > now
     }
 
     fun until(context: Context): Long {
-        return context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getLong(UNTIL, 0L)
+        return prefs(context).getLong(UNTIL, 0L)
+    }
+
+    /** Deletes passes issued by the compromised codes. Safe to call repeatedly. */
+    private fun removeLegacy(context: Context) {
+        val p = prefs(context)
+        if (p.contains(LEGACY_UNTIL)) p.edit().remove(LEGACY_UNTIL).apply()
     }
 
     fun untilLabel(context: Context): String {
@@ -31,24 +43,14 @@ object Pass {
         return format.format(Date(until(context)))
     }
 
-    fun grant(context: Context, days: Int) {
-        val start = maxOf(until(context), System.currentTimeMillis())
-        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
-            .putLong(UNTIL, start + days * 86_400_000L)
-            .apply()
+    /**
+     * Stores the expiry the server confirmed. Only the server sync may call this, and it is not
+     * wired up yet. The server value replaces the local one, even when earlier, so revocations
+     * take effect.
+     */
+    internal fun applyServerExpiry(context: Context, untilMs: Long) {
+        prefs(context).edit().putLong(UNTIL, untilMs).apply()
     }
 
-    fun redeem(context: Context, raw: String): Boolean {
-        val code = raw.uppercase(Locale.US).filter { it.isLetterOrDigit() }.removePrefix("LI")
-        val days = when {
-            code in month -> 31
-            code in year -> 365
-            else -> return false
-        }
-        val start = maxOf(until(context), System.currentTimeMillis())
-        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
-            .putLong(UNTIL, start + days * 86_400_000L)
-            .apply()
-        return true
-    }
+    private fun prefs(context: Context) = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 }
