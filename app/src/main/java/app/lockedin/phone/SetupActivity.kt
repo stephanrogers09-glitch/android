@@ -129,7 +129,7 @@ class SetupActivity : Activity() {
         column.addView(setupBox)
 
         understand = CheckBox(this)
-        understand.text = "Other apps stay closed until the time ends. Calls still come in."
+        understand.text = "I'm ready to lock in"
         understand.setTextColor(Color.parseColor(Ink.DIM))
         understand.textSize = 14f
         understand.setPadding(0, dp(16), 0, dp(8))
@@ -160,6 +160,14 @@ class SetupActivity : Activity() {
         setContentView(root)
         applyIntent()
     }
+
+    // Test hooks for device tests in this module. They change nothing on the screen.
+    internal fun commitmentText(): String = line.text.toString()
+    internal fun suggestionText(): String = suggestion.text.toString()
+    internal fun advanceSuggestionForTest() = rotate.run()
+    internal fun tapSuggestionForTest() = suggestion.performClick()
+    internal fun setCommitmentForTest(text: String) = line.setText(text)
+    internal fun lockForTest() = startLock()
 
     companion object {
         const val EXTRA_PRESET = "app.lockedin.phone.PRESET"

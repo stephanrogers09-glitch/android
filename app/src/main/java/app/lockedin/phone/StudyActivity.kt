@@ -491,6 +491,13 @@ class StudyActivity : Activity() {
         showLibrary()
     }
 
+    // Test hooks for device tests in this module. They run the same code paths as the buttons.
+    internal fun createNoteForTest() = newNote()
+    internal fun setBodyForTest(text: String) = editor.setText(text)
+    internal fun saveForTest() = saveNow()
+    internal fun openIdForTest(): String? = openId
+    internal fun editorTextForTest(): String = editor.text.toString()
+
     private fun saveNow() {
         val id = openId ?: return
         main.removeCallbacks(autoSave)
